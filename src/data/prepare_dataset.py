@@ -42,6 +42,7 @@ def get_thread(link):
 def parse_thread(thread):
     page = 0 #set page no to 0 to start from the first page
     next_page = True
+    index_post = ''
 
     while next_page:
         start_url = 'https://www.nairaland.com/{}/{}'.format(thread, page)
@@ -51,10 +52,21 @@ def parse_thread(thread):
         headers = thread_html.find_all('td', class_='bold l pu')
         bodys = thread_html.find_all('td', class_='l w pd')
 
+        if next_page == 0:
+            index_post = 
+            check_prev
+
         for i in range(len(headers)):
             header = headers[i]
             body = bodys[i]
             parse_post(header, body)
+
+def get_post():
+    post_id = ''
+    return post_id
+
+def check_page ():
+    pass
 
 def parse_post(header, body):
     user
