@@ -6,6 +6,12 @@ from tqdm import tqdm
 import click
 from datetime import datetime
 
+# Set headers
+heads = requests.utils.default_headers()
+heads.update({
+    'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:52.0) Gecko/20100101 Firefox/52.0',
+})
+
 @click.command()
 @click.argument('--forums')
 def main(forums):
@@ -17,7 +23,7 @@ def main(forums):
 
 def parse_forum(forum):
     start_url = 'https://www.nairaland.com/{}/'.format(forum)
-    r1 = requests.get(start_url, headers)
+    r1 = requests.get(start_url, heads)
     raw_html = BeautifulSoup(r1.text, 'html5lib')
 
     # retrieve the number of pages in the forum
@@ -40,15 +46,18 @@ def get_thread(link):
         _id = name
     return _id
 
+# retrieve posts from thread
 def parse_thread(thread):
     page = 0 # start from the first page
     next_page = True
     index_post = ''
     previous_index_post = ''
 
+    data = []
+
     while next_page:
         start_url = 'https://www.nairaland.com/{}/{}'.format(thread, page)
-        r1 = requests.get(start_url, headers)
+        r1 = requests.get(start_url, heads)
         thread_html = BeautifulSoup(r1.text, 'lxml')
 
         headers = thread_html.find_all('td', class_='bold l pu')
@@ -66,9 +75,12 @@ def parse_thread(thread):
             header = headers[i]
             body = bodys[i]
             post = parse_post(header, body)
+            post.update({'page_no': page, 'forum': '', 'thread':thread})
+            data.append(post)
         
         previous_index_post = index_post
         page += 1
+    return data
 
 def getPostID(header):
     post_id = ''
@@ -94,7 +106,11 @@ def parse_post(header, body):
     return post
 
 def getUser(header):
-    return header.find("a", {"class": "user"}).get_text() or None
+    user = ''
+    user_tag = header.find("a", class_="user")
+    if user_tag:
+        user_tag.get_text()
+    return user
 
 def getTimestamp(header):
     time = ''
@@ -113,8 +129,9 @@ def getLikesShares(body):
     likes = ''
     shares = ''
     s_class = body.find("p", class_='s')
-    likes = s_class.find_all('b')[0].get_text()
-    shares = s_class.find_all('b')[1].get_text()
+    if s_class:
+        likes = s_class.find_all('b')[0].get_text()
+        shares = s_class.find_all('b')[1].get_text()
     return [likes, shares]
 
 def getQuote(body):
@@ -122,18 +139,27 @@ def getQuote(body):
     content = body.find('div', class_='narrow')
     blockquotes = content.find_all('blockquote')
     for blockquote in blockquotes:
-        _id = blockquote.find('a').get('href')
-        quotes.append(_id)
+        a_tag = blockquote.find('a')
+        if a_tag:
+            _id = a_tag.get('href')
+            quotes.append(_id)
     return quotes
 
 def getText(body):
     content = body.find('div', class_='narrow')
-    blockquotes = content.find_all('blockquote')
+    quotes = getQuote(body)
     text = ''
-    for i in range(0, len(blockquotes)):
+    for i in range(0, len(quotes)):
         content.blockquote.extract()
     text = content.get_text()
     return text
+
+def getPostID(header):
+    post_id = ''
+    name = header.find_all('a')[0].get('name')
+    if name:
+        post_id = name
+    return post_id
     
 if __name__ == '__main__':
     main()
