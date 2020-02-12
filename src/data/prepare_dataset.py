@@ -24,12 +24,14 @@ def main(forums):
         df.to_csv('data/raw/{}.csv'.(forum))
 
 def parse_forum(forum):
-    start_url = 'https://www.nairaland.com/{}/'.format(forum)
+    start_url = 'https://www.nairaland.com/{}/posts/'.format(forum)
     r1 = requests.get(start_url, heads)
     raw_html = BeautifulSoup(r1.text, 'html5lib')
 
     # create empty df to store posts from parsed threads in the forum
-    df = pd.DataFrame()
+    df_posts = pd.DataFrame()
+
+    threads = []
 
     # retrieve the number of pages in the forum
     page = int(raw_html.select('body > div > p:nth-child(7)')[0].select('b')[1].text) #
@@ -38,29 +40,79 @@ def parse_forum(forum):
         next_page = start_url + '{}'.format(i)
         r2 = requests.get(next_page, heads)
         forum_html = BeautifulSoup(r2.text, 'html5lib')
-        links = raw_html.find_all('a')
-        for link in links:
-            thread = get_thread(link)
-            if thread:
-                res = parse_thread(thread)
-                df_res = pd.DataFrame(res)
-                df_res['forum'] = forum
-                df = df.append(df_res)
+        thread_tags = forum_html.find_all('td', class_='w')
+        for tag in thread_tags:
+            thread = get_thread(tag)
+            threads.append(thread)
+    
+    df_threads = pd.DataFrame(threads)
+    df_threads.to_csv('data/raw/{}_threads.csv'.format(forum))
 
+    iter = 0
+    for thread in threads:
+        res = parse_thread(thread['thread_id'])
+        df_res = pd.DataFrame(res)
+        df_res['forum'] = forum
+        df_posts = df_posts.append(df_res)
+
+        iter += 1
         # save after every 500 pages
-        if i % 500 == 0:
-            df.to_csv('data/raw/{}_{}.csv'.format(forum, i))
+        if iter % 500 == 0:
+            df_posts.to_csv('data/raw/{}_{}.csv'.format(forum, iter))
     return df
 
-def get_thread(link):
+def get_thread(t):
+    thread = {}
+    thread['thread_id'] = getThreadId(t)
+    thread['title'] = getThreadTitle(t)
+    thread['length'] = getThreadLength(t)
+    thread['views'] = getThreadView(t)
+    thread['author'] = getThreadAuthor(t)
+    return thread
+
+def getThreadId(thread):
     _id = ''
-    name = link.get('name')
+    name = thread.find('a').get('name')
     if name not in ('top', None):
         _id = name
     return _id
 
-# retrieve posts from thread
+def getThreadTitle(thread):
+    title = ''
+    b_tag = thread.find('b')
+    if b_tag:
+        title = b_tag.get_text()
+    return title
+
+def getThreadLength(thread):
+    length = ''
+    span_tag = thread.find('span', class_='s')
+    if span_tag:
+        length_tag = span_tag.find_all('b')[1]
+        if length_tag:
+            length = length_tag.get_text()
+    return length
+
+def getThreadView(thread):
+    views = ''
+    span_tag = thread.find('span', class_='s')
+    if span_tag:
+        view_tag = span_tag.find_all('b')[2]
+        if view_tag:
+            views = view_tag.get_text()
+    return views
+
+def getThreadAuthor(thread):
+    author = ''
+    span_tag = thread.find('span', class_='s')
+    if span_tag:
+        author_tag = span_tag.find('a')
+        if author_tag:
+            author = author_tag.get_text()
+    return author
+
 def parse_thread(thread):
+    """retrieve posts from thread"""
     page = 0 # start from the first page
     next_page = True
     index_post = ''
@@ -100,8 +152,8 @@ def parse_thread(thread):
 def is_post_equal(post1, post2):
     return post1 == post2
 
-# retrieve details of each post
 def parse_post(header, body):
+    """retrieve details of each post"""
     post = {}
     post['posted'] = getTimestamp(header)
     post['user'] = getUser(header)
@@ -119,7 +171,7 @@ def getUser(header):
     user = ''
     user_tag = header.find("a", class_="user")
     if user_tag:
-        user_tag.get_text()
+        user = user_tag.get_text()
     return user
 
 def getTimestamp(header):
