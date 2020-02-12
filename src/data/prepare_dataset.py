@@ -15,33 +15,46 @@ heads.update({
 @click.command()
 @click.argument('--forums')
 def main(forums):
-    """ Runs web scraping scripts to turn collect data from the site and
+    """ Runs web scraping scripts to collect data from the site and
         copy into (../raw) 
     """
     for forum in forums:
-        parse_forum(forum)
+        res = parse_forum(forum)
+        df = pd.DataFrame(res)
+        df.to_csv('data/raw/{}.csv'.(forum))
 
 def parse_forum(forum):
     start_url = 'https://www.nairaland.com/{}/'.format(forum)
     r1 = requests.get(start_url, heads)
     raw_html = BeautifulSoup(r1.text, 'html5lib')
 
+    # create empty df to store posts from parsed threads in the forum
+    df = pd.DataFrame()
+
     # retrieve the number of pages in the forum
     page = int(raw_html.select('body > div > p:nth-child(7)')[0].select('b')[1].text) #
     
     for i in tqdm(range(page)):
         next_page = start_url + '{}'.format(i)
-        r2 = requests.get(next_page, headers=headers)
+        r2 = requests.get(next_page, heads)
         forum_html = BeautifulSoup(r2.text, 'html5lib')
-        links = html_soup.find_all('a')
+        links = raw_html.find_all('a')
         for link in links:
             thread = get_thread(link)
             if thread:
-                parse_thread(thread)
+                res = parse_thread(thread)
+                df_res = pd.DataFrame(res)
+                df_res['forum'] = forum
+                df = df.append(df_res)
+
+        # save after every 500 pages
+        if i % 500 == 0:
+            df.to_csv('data/raw/{}_{}.csv'.format(forum, i))
+    return df
 
 def get_thread(link):
     _id = ''
-    name = post.get('name')
+    name = link.get('name')
     if name not in ('top', None):
         _id = name
     return _id
@@ -66,7 +79,7 @@ def parse_thread(thread):
         #retrieve first post in the thread 
         index_post = getPostID(headers[0]) 
 
-        if page > 1:
+        if page > 0:
             # compare first post on current page with previous page
             if is_post_equal(index_post, previous_index_post):
                 break
@@ -75,37 +88,34 @@ def parse_thread(thread):
             header = headers[i]
             body = bodys[i]
             post = parse_post(header, body)
-            post.update({'page_no': page, 'forum': '', 'thread':thread})
+            post.update({'page_no': page, 'thread':thread})
             data.append(post)
         
         previous_index_post = index_post
         page += 1
-    return data
+    print('Thread: {}, No of Page(s): {}, No of Post(s) {}'.format(thread, page, len(data)))
 
-def getPostID(header):
-    post_id = ''
-    name = header.find_all('a')[0].get('name')
-    if name:
-        post_id = name
-    return post_id
+    return data
 
 def is_post_equal(post1, post2):
     return post1 == post2
 
+# retrieve details of each post
 def parse_post(header, body):
     post = {}
     post['posted'] = getTimestamp(header)
-    post['retrieved'] = datetime.now().strftime("%H:%M:%S %d-%m-%Y")
-    post['shares'] = getLikesShares(body)[1]
-    post['likes'] = getLikesShares(body)[0]
     post['user'] = getUser(header)
+    post['post_id'] = getPostID(header)
+    post['text'] = getText(body)
     post['has_quote'] = True if getQuote(body) else False
     post['quotes'] = getQuote(body)
-    post['text'] = getText(body)
-    post['post_id'] = getPostID(header)
+    post['shares'] = getLikesShares(body)[1]
+    post['likes'] = getLikesShares(body)[0]
+    post['retrieved'] = datetime.now().strftime("%H:%M:%S %d-%m-%Y")
     return post
 
 def getUser(header):
+    """Attempt to get user from post."""
     user = ''
     user_tag = header.find("a", class_="user")
     if user_tag:
@@ -113,6 +123,7 @@ def getUser(header):
     return user
 
 def getTimestamp(header):
+    """Attempt to get timestamp of post."""
     time = ''
     date = ''
     tag_datetime = header.contents[-1]
@@ -126,6 +137,7 @@ def getTimestamp(header):
     return date_time
 
 def getLikesShares(body):
+    """Attempt to get no of likes and shares."""
     likes = ''
     shares = ''
     s_class = body.find("p", class_='s')
@@ -135,6 +147,7 @@ def getLikesShares(body):
     return [likes, shares]
 
 def getQuote(body):
+    """Attempt to get quotes from post"""
     quotes = []
     content = body.find('div', class_='narrow')
     blockquotes = content.find_all('blockquote')
@@ -146,15 +159,16 @@ def getQuote(body):
     return quotes
 
 def getText(body):
+    """Attempt to get text from post"""
     content = body.find('div', class_='narrow')
-    quotes = getQuote(body)
     text = ''
-    for i in range(0, len(quotes)):
+    while content.blockquote:
         content.blockquote.extract()
     text = content.get_text()
     return text
 
 def getPostID(header):
+    """Attempt to get id of post"""
     post_id = ''
     name = header.find_all('a')[0].get('name')
     if name:
