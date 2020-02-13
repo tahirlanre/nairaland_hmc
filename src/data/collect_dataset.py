@@ -28,29 +28,29 @@ def parse_forum(forum):
     r1 = requests.get(start_url, heads)
     raw_html = BeautifulSoup(r1.text, 'html5lib')
 
-    # create empty df to store posts from parsed threads in the forum
+    # create empty df to store posts from parsed topics in the forum
     df_posts = pd.DataFrame()
 
-    threads = []
+    topics = []
 
     # retrieve the number of pages in the forum
-    page = int(raw_html.select('body > div > p:nth-child(7)')[0].select('b')[1].text) #
+    page = int(raw_html.select('body > div > p:nth-child(7)')[0].select('b')[1].text) 
     
     for i in tqdm(range(page)):
         next_page = start_url + '{}'.format(i)
         r2 = requests.get(next_page, heads)
         forum_html = BeautifulSoup(r2.text, 'html5lib')
-        thread_tags = forum_html.find_all('td', attrs = {'id': True})
-        for tag in thread_tags:
-            thread = get_thread(tag)
-            threads.append(thread)
+        topic_tags = forum_html.find_all('td', attrs = {'id': True})
+        for tag in topic_tags:
+            topic = get_topic(tag)
+            topics.append(topic)
     
-    df_threads = pd.DataFrame(threads)
-    df_threads.to_csv('data/raw/{}_threads.csv'.format(forum))
+    df_topics = pd.DataFrame(topics)
+    df_topics.to_csv('data/raw/{}_topics.csv'.format(forum))
 
     iter = 0
-    for thread in threads:
-        res = parse_thread(thread['thread_id'])
+    for topic in topics:
+        res = parse_topic(topic['topic_id'])
         df_res = pd.DataFrame(res)
         df_res['forum'] = forum
         df_posts = df_posts.append(df_res)
@@ -61,58 +61,58 @@ def parse_forum(forum):
             df_posts.to_csv('data/raw/{}_{}.csv'.format(forum, iter))
     return df
 
-def get_thread(t):
-    thread = {}
-    thread['thread_id'] = getThreadId(t)
-    thread['title'] = getThreadTitle(t)
-    thread['length'] = getThreadLength(t)
-    thread['views'] = getThreadView(t)
-    thread['author'] = getThreadAuthor(t)
-    return thread
+def get_topic(t):
+    topic = {}
+    topic['topic_id'] = getTopicId(t)
+    topic['title'] = getTopicTitle(t)
+    topic['length'] = getTopicLength(t)
+    topic['views'] = getTopicView(t)
+    topic['author'] = getTopicAuthor(t)
+    return topic
 
-def getThreadId(thread):
+def getTopicId(topic):
     _id = ''
-    name = thread.find('a').get('name')
+    name = topic.find('a').get('name')
     if name not in ('top', None):
         _id = name
     return _id
 
-def getThreadTitle(thread):
+def getTopicTitle(topic):
     title = ''
-    b_tag = thread.find('b')
+    b_tag = topic.find('b')
     if b_tag:
         title = b_tag.get_text()
     return title
 
-def getThreadLength(thread):
+def getTopicLength(topic):
     length = ''
-    span_tag = thread.find('span', class_='s')
+    span_tag = topic.find('span', class_='s')
     if span_tag:
         length_tag = span_tag.find_all('b')[1]
         if length_tag:
             length = length_tag.get_text()
     return length
 
-def getThreadView(thread):
+def getTopicView(topic):
     views = ''
-    span_tag = thread.find('span', class_='s')
+    span_tag = topic.find('span', class_='s')
     if span_tag:
         view_tag = span_tag.find_all('b')[2]
         if view_tag:
             views = view_tag.get_text()
     return views
 
-def getThreadAuthor(thread):
+def getTopicAuthor(topic):
     author = ''
-    span_tag = thread.find('span', class_='s')
+    span_tag = topic.find('span', class_='s')
     if span_tag:
         author_tag = span_tag.find('a')
         if author_tag:
             author = author_tag.get_text()
     return author
 
-def parse_thread(thread):
-    """retrieve posts from thread"""
+def parse_topic(topic):
+    """retrieve posts from topic"""
     page = 0 # start from the first page
     next_page = True
     index_post = ''
@@ -120,20 +120,22 @@ def parse_thread(thread):
 
     data = []
 
+    # 
     while next_page:
-        start_url = 'https://www.nairaland.com/{}/{}'.format(thread, page)
+        start_url = 'https://www.nairaland.com/{}/{}'.format(topic, page)
         r1 = requests.get(start_url, heads)
-        thread_html = BeautifulSoup(r1.text, 'lxml')
+        topic_html = BeautifulSoup(r1.text, 'lxml')
 
-        headers = thread_html.find_all('td', class_='bold l pu')
-        bodys = thread_html.find_all('td', class_='l w pd')
+        headers = topic_html.find_all('td', class_='bold l pu')
+        bodys = topic_html.find_all('td', class_='l w pd')
 
-        #retrieve first post in the thread
+        # retrieve first post in the topic
         if len(headers) > 1:
             index_post = getPostID(headers[0]) 
 
+        # compare first post on current page with first post on previous page
+        # to check if previous page and current page are the same
         if page > 0:
-            # compare first post on current page with previous page
             if is_post_equal(index_post, previous_index_post):
                 break
 
@@ -141,12 +143,12 @@ def parse_thread(thread):
             header = headers[i]
             body = bodys[i]
             post = parse_post(header, body)
-            post.update({'page_no': page, 'thread':thread})
+            post.update({'page_no': page, 'topic':topic})
             data.append(post)
         
         previous_index_post = index_post
         page += 1
-    print('Thread: {}, No of Page(s): {}, No of Post(s) {}'.format(thread, page, len(data)))
+    print('topic: {}, No of Page(s): {}, No of Post(s) {}'.format(topic, page, len(data)))
 
     return data
 
