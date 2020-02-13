@@ -59,7 +59,7 @@ def parse_forum(forum):
         # save after every 500 pages
         if iter % 500 == 0:
             df_posts.to_csv('data/raw/{}_{}.csv'.format(forum, iter))
-    return df
+    return df_posts
 
 def get_topic(t):
     topic = {}
