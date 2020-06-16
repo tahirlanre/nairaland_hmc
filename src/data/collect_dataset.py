@@ -177,6 +177,17 @@ def getUser(header):
         user = user_tag.get_text()
     return user
 
+def getGender(header):
+    """Attempt to get gender of user from post."""
+    gender = ''
+    female_tag = header.find("span", class_="f")
+    male_tag = header.find("span", class_="m")
+    if male_tag:
+        gender = male_tag.get_text()
+    elif female_tag:
+        gender = female_tag.get_text()
+    return gender
+
 def getTimestamp(header):
     """Attempt to get timestamp of post."""
     time = ''
