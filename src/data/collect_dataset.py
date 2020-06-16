@@ -160,6 +160,7 @@ def parse_post(header, body):
     post = {}
     post['posted'] = getTimestamp(header)
     post['user'] = getUser(header)
+    post['gender'] = getGender(header)
     post['post_id'] = getPostID(header)
     post['text'] = getText(body)
     post['has_quote'] = True if getQuote(body) else False
