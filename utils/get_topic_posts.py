@@ -8,8 +8,9 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 import gzip
 import os
+from functools import partial
 
-from utils import init_logger
+from utils.utils import init_logger
 
 init_logger()
 
@@ -126,7 +127,7 @@ def get_post_info(header, body):
     return post
 
 
-def parse_thread(thread):
+def parse_thread(output_dir, thread):
     """retrieve posts from thread"""
     page = 0  # start from the first page
     next_page = True
@@ -135,7 +136,6 @@ def parse_thread(thread):
 
     data = []
     no_of_posts = 0
-    output_dir = "/media/zqxh49/C28AAF378AAF273F/PHD/data/Nairaland/raw/"
     output_file = os.path.join(output_dir, f"{thread}.jsonl.gz")
     if os.path.exists(output_file):
         raise ValueError("File exists")
@@ -176,10 +176,16 @@ def parse_thread(thread):
 
 if __name__ == "__main__":
     threads = []
-    with open("data/health_topics.json", "r") as f:
+    forum = "politics"
+    output_dir = f"/media/zqxh49/C28AAF378AAF273F/PHD/data/Nairaland/raw/{forum}"
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+
+    with open(f"data/{forum}_topics.json", "r") as f:
         for line in f:
             obj = json.loads(line)
             threads.append(obj["topic_id"])
 
     with ThreadPoolExecutor() as executor:
-        executor.map(parse_thread, threads)
+        fn = partial(parse_thread, output_dir)
+        executor.map(fn, threads)

@@ -5,14 +5,13 @@ from tqdm import tqdm
 import argparse
 import logging
 
-from get_topic_posts import parse_post
-from utils import init_logger
+from utils.utils import init_logger
 
 init_logger()
 
 # Set headers
-heads = requests.utils.default_headers()
-heads.update(
+header = requests.utils.default_headers()
+header.update(
     {
         "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:52.0) Gecko/20100101 Firefox/52.0",
     }
@@ -89,18 +88,22 @@ def parse_forum(args):
     logging.info(f"******    Getting topics from {forum} forum   ******")
 
     start_url = "https://www.nairaland.com/{}/posts/".format(forum)
-    r1 = requests.get(start_url, heads)
+    r1 = requests.get(start_url, header)
     raw_html = BeautifulSoup(r1.text, "html5lib")
 
     # retrieve the number of pages in the forum
-    page = int(raw_html.select("body > div > p:nth-child(7)")[0].select("b")[1].text)
+    # some forums have sub-forums so we skip them
+    if forum in ["health", "nysc", "dating", "family", "jokes"]:
+        page = int(raw_html.select("body > div > p:nth-child(7)")[0].select("b")[1].text)
+    else:
+        page = int(raw_html.select("body > div > p:nth-of-type(4)")[0].select("b")[1].text)
 
     counter = 0
     topic_tags = []
     with open(f"data/{forum}_topics.json", "w") as f:
         for i in range(page):
             next_page = start_url + "{}".format(i)
-            r2 = requests.get(next_page, heads)
+            r2 = requests.get(next_page, header)
             forum_html = BeautifulSoup(r2.text, "html5lib")
             topic_tags = forum_html.find_all("td", attrs={"id": True})
             for tag in topic_tags:
@@ -111,9 +114,7 @@ def parse_forum(args):
 
 
 def main():
-    """Runs web scraping scripts to collect data from the site and
-    copy into (../raw)
-    """
+    """Runs web scraping scripts to collect data from the site and copy into (../raw) """
     args = parse_args()
     parse_forum(args)
 

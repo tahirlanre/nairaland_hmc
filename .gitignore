@@ -89,3 +89,8 @@ target/
 .mypy_cache/
 
 notebooks/
+
+saved_output
+
+*.sh
+*.python-version
