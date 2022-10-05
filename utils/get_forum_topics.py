@@ -94,9 +94,13 @@ def parse_forum(args):
     # retrieve the number of pages in the forum
     # some forums have sub-forums so we skip them
     if forum in ["health", "nysc", "dating", "family", "jokes"]:
-        page = int(raw_html.select("body > div > p:nth-child(7)")[0].select("b")[1].text)
+        page = int(
+            raw_html.select("body > div > p:nth-child(7)")[0].select("b")[1].text
+        )
     else:
-        page = int(raw_html.select("body > div > p:nth-of-type(4)")[0].select("b")[1].text)
+        page = int(
+            raw_html.select("body > div > p:nth-of-type(4)")[0].select("b")[1].text
+        )
 
     counter = 0
     topic_tags = []
@@ -114,7 +118,7 @@ def parse_forum(args):
 
 
 def main():
-    """Runs web scraping scripts to collect data from the site and copy into (../raw) """
+    """Runs web scraping scripts to collect data from the site and copy into (../raw)"""
     args = parse_args()
     parse_forum(args)
 
