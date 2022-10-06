@@ -132,11 +132,23 @@ def parse_args():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=2e-5,
+        default=1e-5,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
         "--weight_decay", type=float, default=0.0, help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--lam",
+        type=float,
+        default=0.9,
+        help="Weighting hyperparameter for the loss functions",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.3,
+        help="scalar temperature parameter that controls the separation of classes",
     )
     parser.add_argument(
         "--num_train_epochs",
@@ -275,7 +287,7 @@ def main():
     results = {}
 
     # list of seeds
-    seeds = [42]  # , 52, 62, 72, 100]
+    seeds = [42 , 52, 62, 72, 100]
     for seed in seeds:
         # set training seed
         set_seed(seed)
@@ -295,12 +307,6 @@ def main():
         # If the CSVs/JSONs contain only one non-label column, the script does single sentence classification on this
         # single column. You can easily tweak this behavior (see below)
 
-        # In distributed training, the load_dataset function guarantee that only one local process can concurrently
-        # download the dataset.
-        # if args.task_name is not None:
-        #     # Downloading and loading a dataset from the hub.
-        #     raw_datasets = load_dataset("glue", args.task_name)
-        # else:
         # Loading the dataset from local csv or json file.
         data_files = {}
         if args.train_file is not None:
@@ -360,6 +366,8 @@ def main():
             model = BERT_SCL(
                 args.model_name_or_path,
                 num_labels,
+                temperature=args.temperature,
+                lam=args.lam,
             )
 
         # Some models have set the order of the labels to use, so let's make sure we do use it.

@@ -9,7 +9,7 @@ import numpy as np
 
 class BERT_SCL(nn.Module):
     def __init__(
-        self, enc_model_name_or_path, num_labels, dropout=0.2, temperature=0.3, lam=0.9
+        self, enc_model_name_or_path, num_labels, dropout=0.1, temperature=0.3, lam=0.9
     ) -> None:
         super().__init__()
 
