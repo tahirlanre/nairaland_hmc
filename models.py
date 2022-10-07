@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from transformers import AutoModel
 
 from sklearn.metrics.pairwise import cosine_similarity
+from scipy.spatial import distance
 import numpy as np
 
 
@@ -22,39 +23,52 @@ class BERT_SCL(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
-    def contrastive_loss(self, temp, embedding1, embedding2, label):
-        """calculate the contrastive loss"""
-        # cosine similarity between embeddings
-        cosine_sim = cosine_similarity(embedding1, embedding2)
-        # remove diagonal elements from matrix
-        dis = cosine_sim[~np.eye(cosine_sim.shape[0], dtype=bool)].reshape(
-            cosine_sim.shape[0], -1
-        )
-        # apply temprature to elements
-        dis = dis / temp
-        cosine_sim = cosine_sim / temp
-        # apply exp to elements
-        dis = np.exp(dis)
-        cosine_sim = np.exp(cosine_sim)
+    def contrastive_loss(self, embeddings, labels, gamma=1.0):
+        c_loss = 0.
+        for i in range(len(embeddings)):
+            for j in range(len(embeddings)):
+                if (i != j):
+                    dist = distance.euclidean(embeddings[i], embeddings[j])
+                    if labels[i] == labels[j]:
+                        c_loss += dist
+                    else:
+                        c_loss += max(0, (gamma - dist))
+        return c_loss               
+                
 
-        # calculate row sum
-        row_sum = []
-        for i in range(len(embedding1)):
-            row_sum.append(sum(dis[i]))
-        # calculate outer sum
-        contrastive_loss = 0
-        for i in range(len(embedding1)):
-            n_i = label.tolist().count(label[i]) - 1
-            inner_sum = 0
-            # calculate inner sum
-            for j in range(len(embedding1)):
-                if label[i] == label[j] and i != j:
-                    inner_sum = inner_sum + np.log(cosine_sim[i][j] / row_sum[i])
-            if n_i != 0:
-                contrastive_loss += inner_sum / (-n_i)
-            else:
-                contrastive_loss += 0
-        return contrastive_loss
+    # def contrastive_loss(self, temp, embedding1, embedding2, label):
+    #     """calculate the contrastive loss"""
+    #     # cosine similarity between embeddings
+    #     cosine_sim = cosine_similarity(embedding1, embedding2)
+    #     # remove diagonal elements from matrix
+    #     dis = cosine_sim[~np.eye(cosine_sim.shape[0], dtype=bool)].reshape(
+    #         cosine_sim.shape[0], -1
+    #     )
+    #     # apply temprature to elements
+    #     dis = dis / temp
+    #     cosine_sim = cosine_sim / temp
+    #     # apply exp to elements
+    #     dis = np.exp(dis)
+    #     cosine_sim = np.exp(cosine_sim)
+
+    #     # calculate row sum
+    #     row_sum = []
+    #     for i in range(len(embedding1)):
+    #         row_sum.append(sum(dis[i]))
+    #     # calculate outer sum
+    #     contrastive_loss = 0
+    #     for i in range(len(embedding1)):
+    #         n_i = label.tolist().count(label[i]) - 1
+    #         inner_sum = 0
+    #         # calculate inner sum
+    #         for j in range(len(embedding1)):
+    #             if label[i] == label[j] and i != j:
+    #                 inner_sum = inner_sum + np.log(cosine_sim[i][j] / row_sum[i])
+    #         if n_i != 0:
+    #             contrastive_loss += inner_sum / (-n_i)
+    #         else:
+    #             contrastive_loss += 0
+    #     return contrastive_loss
 
     def forward(
         self,
@@ -78,6 +92,7 @@ class BERT_SCL(nn.Module):
         for i, idx in enumerate(target_index):
             target_output.append(sequence_output[i, idx, :])
         target_output = torch.stack(target_output)
+        # target_output = sequence_output[:, 0, :]
 
         pooled_output = self.dropout(pooled_output)
 
@@ -86,7 +101,8 @@ class BERT_SCL(nn.Module):
         sequence_output_2 = outputs_2[0]  # [batch, max_len, hidden]
 
         # Get target ouput with target mask
-        target_output_2 = sequence_output_2[:, 1, :]
+        # target_output_2 = sequence_output_2[:, 1, :]
+        target_output_2 = sequence_output_2[:, 0, :]
 
         logits = self.classifier(pooled_output)
 
@@ -96,12 +112,13 @@ class BERT_SCL(nn.Module):
             cross_loss = loss_fn(logits, labels)
 
             contrastive_l = self.contrastive_loss(
-                self.temperature,
+                # self.temperature,
                 target_output.cpu().detach().numpy(),
-                target_output_2.cpu().detach().numpy(),
+                # target_output_2.cpu().detach().numpy(),
                 labels,
             )
-            loss = (self.lam * contrastive_l) + (1 - self.lam) * (cross_loss)
+            # loss = (self.lam * contrastive_l) + (1 - self.lam) * (cross_loss)
+            loss = cross_loss + 0.2*contrastive_l
         output = (logits,)
 
         return ((loss,) + output) if loss is not None else output
