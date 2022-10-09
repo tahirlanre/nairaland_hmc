@@ -141,7 +141,7 @@ def parse_args():
     parser.add_argument(
         "--lam",
         type=float,
-        default=0.9,
+        default=0.2,
         help="Weighting hyperparameter for the loss functions",
     )
     parser.add_argument(
@@ -366,7 +366,6 @@ def main():
             model = BERT_SCL(
                 args.model_name_or_path,
                 num_labels,
-                temperature=args.temperature,
                 lam=args.lam,
             )
 

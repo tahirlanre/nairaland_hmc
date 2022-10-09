@@ -10,13 +10,12 @@ import numpy as np
 
 class BERT_SCL(nn.Module):
     def __init__(
-        self, enc_model_name_or_path, num_labels, dropout=0.1, temperature=0.3, lam=0.9
+        self, enc_model_name_or_path, num_labels, lam, dropout=0.2
     ) -> None:
         super().__init__()
 
         self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)
         self.num_labels = num_labels
-        self.temperature = temperature
         self.lam = lam
 
         self.classifier = nn.Linear(768, num_labels)
@@ -118,7 +117,7 @@ class BERT_SCL(nn.Module):
                 labels,
             )
             # loss = (self.lam * contrastive_l) + (1 - self.lam) * (cross_loss)
-            loss = cross_loss + 0.2*contrastive_l
+            loss = cross_loss + self.lam * contrastive_l
         output = (logits,)
 
         return ((loss,) + output) if loss is not None else output

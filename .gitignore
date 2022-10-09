@@ -94,3 +94,4 @@ saved_output
 
 *.sh
 *.python-version
+*.out
