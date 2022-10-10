@@ -297,16 +297,6 @@ def main():
         # wandb.login()
         # wandb.init(project="phm-classification", config=args)
 
-        # Get the datasets: you can either provide your own CSV/JSON training and evaluation files (see below)
-        # or specify a GLUE benchmark task (the dataset will be downloaded automatically from the datasets Hub).
-
-        # For CSV/JSON files, this script will use as labels the column called 'label' and as pair of sentences the
-        # sentences in columns called 'sentence1' and 'sentence2' if such column exists or the first two columns not named
-        # label if at least two columns are provided.
-
-        # If the CSVs/JSONs contain only one non-label column, the script does single sentence classification on this
-        # single column. You can easily tweak this behavior (see below)
-
         # Loading the dataset from local csv or json file.
         data_files = {}
         if args.train_file is not None:
