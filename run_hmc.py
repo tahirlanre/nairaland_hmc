@@ -46,7 +46,7 @@ from transformers.utils import send_example_telemetry
 from transformers.utils.versions import require_version
 
 
-from models import BERT_MTL, BERT_MTL_ATTN, BERT_SCL, BERT_STL, BERT_MTL_MAX
+from models import BERT_SCL, BERT_STL, BERT_CON
 
 
 logger = get_logger(__name__)
@@ -108,7 +108,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        choices=["mtl", "mtl_attn", "stl", "mtl_max", "scl"],
+        choices=["stl", "con", "scl"],
         required=True,
         help="the name of the model to use. some models may use different model args than others.",
     )
@@ -333,27 +333,14 @@ def main():
                 num_labels,
                 # args.dropout,
             )
-        elif args.model == "mtl":
-            model = BERT_MTL(
-                args.model_name_or_path,
-                args.emotion_model_name_or_path,
-                num_labels,
-                # args.dropout,
-            )
-        elif args.model == "mtl_attn":
-            model = BERT_MTL_ATTN(
-                args.model_name_or_path,
-                args.emotion_model_name_or_path,
-                num_labels,
-            )
-        elif args.model == "mtl_max":
-            model = BERT_MTL_MAX(
-                args.model_name_or_path,
-                args.emotion_model_name_or_path,
-                num_labels,
-            )
         elif args.model == "scl":
             model = BERT_SCL(
+                args.model_name_or_path,
+                num_labels,
+                lam=args.lam,
+            )
+        elif args.model == "con":
+            model = BERT_CON(
                 args.model_name_or_path,
                 num_labels,
                 lam=args.lam,
@@ -507,7 +494,7 @@ def main():
             return result
 
         with accelerator.main_process_first():
-            if args.model == "scl":
+            if args.model == "scl" or args.model == "con":
                 processed_datasets = raw_datasets.map(
                     preprocess_function_2,
                     batched=True,
