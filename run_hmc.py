@@ -338,6 +338,7 @@ def main():
                 args.model_name_or_path,
                 num_labels,
                 lam=args.lam,
+                temperature=args.temperature,
             )
         elif args.model == "con":
             model = BERT_CON(

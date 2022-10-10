@@ -77,14 +77,16 @@ class BERT_CON(nn.Module):
 
 class BERT_SCL(nn.Module):
     def __init__(
-        self, enc_model_name_or_path, num_labels, lam, dropout=0.2
+        self, enc_model_name_or_path, num_labels, lam, temperature, dropout=0.2
     ) -> None:
         super().__init__()
 
         self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)
         self.num_labels = num_labels
-        self.lam = lam
 
+        self.lam = lam
+        self.temperature = temperature
+        
         self.classifier = nn.Linear(768, num_labels)
 
         self.dropout = nn.Dropout(dropout)            
