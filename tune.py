@@ -1,37 +1,38 @@
-import logging
+from functools import partial
 import os
+import random
 
-import wandb
-from accelerate import Accelerator
-from accelerate.utils import set_seed
-from accelerate.logging import get_logger
+import torch
+from torch.utils.data import DataLoader
 import transformers
 from transformers import default_data_collator, get_scheduler, AutoConfig, AutoTokenizer
-import evaluate
-from tqdm.auto import tqdm
-
 import datasets
 from datasets import load_dataset
 from nltk import wordpunct_tokenize
 
-import torch
-from torch.utils.data import DataLoader
+import numpy as np
+from sklearn.metrics import f1_score
+from ray import tune
+from ray.tune import CLIReporter
+from ray.tune.schedulers import ASHAScheduler
 
 from models import BERT_CON
 
-logger = get_logger(__name__)
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-os.environ["WANDB_START_METHOD"] = "thread"
-os.environ["WANDB_PROJECT"] = "nairaland-hmc"
-os.environ["WANDB_LOG_MODEL"] = "true"
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
-metric = evaluate.load("f1")
 
 def build_dataset(data_path, tokenizer, batch_size):
     data_files = {}
-    data_files["train"] = data_path + "train.csv"
-    data_files["validation"] = data_path + "dev.csv"
-    data_files["test"] = data_path + "test.csv"
+    data_files["train"] = os.path.join(data_path, "train.csv")
+    data_files["validation"] = os.path.join(data_path, "dev.csv")
+    data_files["test"] = os.path.join(data_path, "test.csv")
 
     raw_datasets = load_dataset("csv", data_files=data_files)
 
@@ -39,7 +40,6 @@ def build_dataset(data_path, tokenizer, batch_size):
     label_list.sort()
     label_to_id = {v: i for i, v in enumerate(label_list)}
 
-    padding = "max_length"
     max_seq_length = 128
 
     def preprocess_function(examples):
@@ -146,8 +146,6 @@ def build_dataset(data_path, tokenizer, batch_size):
             target_mask_2_list.append(segment_ids_2)
             attention_mask_2_list.append(input_mask_2)
 
-        #         import pdb; pdb.set_trace()
-
         result = {
             "input_ids": input_ids_list,
             "input_ids_2": input_ids_2_list,
@@ -160,17 +158,15 @@ def build_dataset(data_path, tokenizer, batch_size):
         }
         return result
 
-    with accelerator.main_process_first():
-        processed_datasets = raw_datasets.map(
-            preprocess_function,
-            batched=True,
-            remove_columns=raw_datasets["train"].column_names,
-            desc="Running tokenizer on dataset",
-        )
+    processed_datasets = raw_datasets.map(
+        preprocess_function,
+        batched=True,
+        remove_columns=raw_datasets["train"].column_names,
+        desc="Running tokenizer on dataset",
+    )
 
     train_dataset = processed_datasets["train"]
     eval_dataset = processed_datasets["validation"]
-    #     test_dataset = processed_datasets["test"]
 
     data_collator = default_data_collator
 
@@ -242,150 +238,119 @@ def model_init(model_name_or_path, label_list, lam):
     return model
 
 
-def train(config=None):
-    # Initialize a new wandb run
-    with wandb.init(config=config):
-        # If called by wandb.agent, as below,
-        # this config will be set by Sweep Controller
-        config = wandb.config
-
-        # For seed results
-        results = {}
-
-        seeds = [42, 52]  # , 62, 72, 100]
-
-        for seed in seeds:
-            logger.info(f"Running training with seed = {seed}")
-
-            set_seed(seed)
-
-            accelerator.wait_for_everyone()
-
-            tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
-
-            train_dataloader, eval_dataloader, label_list = build_dataset(
-                data_path, tokenizer, config.batch_size
-            )
-            #         network = build_network(config.fc_layer_size, config.dropout)
-            model = model_init(model_name_or_path, label_list, config.lam)
-            num_update_steps_per_epoch = len(train_dataloader)
-            max_train_steps = epochs * num_update_steps_per_epoch
-            optimizer, lr_scheduler = build_optimizer(
-                model, config.learning_rate, max_train_steps
-            )
-
-            # Prepare everything with our `accelerator`.
-            (
-                model,
-                optimizer,
-                train_dataloader,
-                eval_dataloader,
-                lr_scheduler,
-            ) = accelerator.prepare(
-                model,
-                optimizer,
-                train_dataloader,
-                eval_dataloader,
-                lr_scheduler,
-            )
-
-            progress_bar = tqdm(
-                range(max_train_steps), disable=not accelerator.is_local_main_process
-            )
-            completed_steps = 0
-
-            best_eval_f1 = float("inf")
-
-            for epoch in range(epochs):
-                for step, batch in enumerate(train_dataloader):
-                    outputs = model(**batch)
-                    loss = outputs[0]
-                    accelerator.backward(loss)
-
-                    if step == len(train_dataloader) - 1:
-                        optimizer.step()
-                        lr_scheduler.step()
-                        optimizer.zero_grad()
-                        progress_bar.update(1)
-                        completed_steps += 1
-
-                model.eval()
-                eval_loss = 0.0
-                for step, batch in enumerate(eval_dataloader):
-                    with torch.no_grad():
-                        outputs = model(**batch)
-                    predictions = outputs[1].argmax(dim=-1)
-                    predictions, references = accelerator.gather(
-                        (predictions, batch["labels"])
-                    )
-                    eval_loss += outputs[0].item()
-
-                    if accelerator.num_processes > 1:
-                        if step == len(eval_dataloader) - 1:
-                            predictions = predictions[
-                                : len(eval_dataloader.dataset) - samples_seen
-                            ]
-                            references = references[
-                                : len(eval_dataloader.dataset) - samples_seen
-                            ]
-                        else:
-                            samples_seen += references.shape[0]
-                    metric.add_batch(
-                        predictions=predictions,
-                        references=references,
-                    )
-
-                eval_loss = eval_loss / len(eval_dataloader)
-                logger.info(f"epoch {epoch}: eval loss: {eval_loss}")
-
-                eval_metric = metric.compute(average="macro")
-                eval_f1 = eval_metric["f1"]
-
-                if eval_f1 > best_eval_f1:
-                    best_eval_f1 = eval_f1
-
-            results[seed] = best_eval_f1
-
-        avg_f1 = sum(results[k] for k in results) / len(results)
-        wandb.log({"eval_f1": avg_f1})
-
-
-if __name__ == "__main__":
+def train(config, data_dir, model_name_or_path):
     epochs = 5
-    data_path = "data/sample/"
+
+    # For seed results
+    results = {}
+    seeds = [42, 52, 62, 72, 100]
+
+    for seed in seeds:
+        print(f"Running training with seed = {seed}")
+        set_seed(seed)
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+
+        train_dataloader, eval_dataloader, label_list = build_dataset(
+            data_dir, tokenizer, config["batch_size"]
+        )
+
+        model = model_init(model_name_or_path, label_list, config["lam"])
+        model.to(device)
+
+        num_update_steps_per_epoch = len(train_dataloader)
+        max_train_steps = epochs * num_update_steps_per_epoch
+        optimizer, lr_scheduler = build_optimizer(
+            model, config["learning_rate"], max_train_steps
+        )
+
+        best_eval_f1 = 0
+        for epoch in range(epochs):
+            for step, batch in enumerate(train_dataloader):
+                batch = {key: batch[key].to(device) for key in batch}
+                outputs = model(**batch)
+                loss = outputs[0]
+                loss.backward()
+
+                if step == len(train_dataloader) - 1:
+                    optimizer.step()
+                    lr_scheduler.step()
+                    optimizer.zero_grad()
+
+            model.eval()
+            eval_loss = 0.0
+            y_pred = None
+            y_true = None
+            for step, batch in enumerate(eval_dataloader):
+                batch = {key: batch[key].to(device) for key in batch}
+                with torch.no_grad():
+                    outputs = model(**batch)
+
+                eval_loss += outputs[0].item()
+
+                if y_pred is None:
+                    y_pred = outputs[1].argmax(dim=-1).detach().cpu().numpy()
+                    y_true = batch["labels"].detach().cpu().numpy()
+                else:
+                    y_pred = np.append(
+                        y_pred, outputs[1].argmax(dim=-1).detach().cpu().numpy(), axis=0
+                    )
+                    y_true = np.append(y_true, batch["labels"].detach().cpu().numpy())
+
+            eval_loss = eval_loss / len(eval_dataloader)
+
+            eval_f1 = f1_score(y_true, y_pred, average="macro")
+
+            if eval_f1 > best_eval_f1:
+                best_eval_f1 = eval_f1
+
+        print(f"Seed = {seed}, Eval F1 = {best_eval_f1}")
+        results[seed] = best_eval_f1
+
+    avg_f1 = sum(results[k] for k in results) / len(results)
+    print(f"Average F1 {avg_f1}")
+    tune.report(eval_f1=avg_f1)
+
+    print("Finished Training")
+
+
+def main(num_samples=2, max_num_epochs=2, gpus_per_trial=1):
+    data_dir = os.path.abspath("./data/sample/")
     model_name_or_path = "bert-base-uncased"
 
-    accelerator = Accelerator()
-
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO,
-    )
-    logger.info(accelerator.state, main_process_only=False)
     datasets.utils.logging.set_verbosity_error()
     transformers.utils.logging.set_verbosity_error()
 
-    wandb.login()
-
-    # method
-    sweep_config = {"method": "grid"}
-
-    # metric
-    sweep_metric = {"name": "eval_f1", "goal": "maximize"}
-
     # hyperparameters
-    parameters_dict = {
-        "batch_size": {"values": [2, 4]},
-        "learning_rate": {"values": [1e-5, 2e-5]},
-        "lam": {"values": [0.1, 0.2]},
+    config = {
+        "batch_size": tune.choice([8, 16, 32]),
+        "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
+        "lam": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5]),
     }
+    scheduler = ASHAScheduler(
+        metric="eval_f1",
+        mode="max",
+        max_t=max_num_epochs,
+        grace_period=1,
+        reduction_factor=2,
+    )
+    reporter = CLIReporter(metric_columns=["eval_f1", "training_iteration"])
+    result = tune.run(
+        partial(train, data_dir=data_dir, model_name_or_path=model_name_or_path),
+        resources_per_trial={"cpu": 4, "gpu": gpus_per_trial},
+        config=config,
+        num_samples=num_samples,
+        scheduler=scheduler,
+        progress_reporter=reporter,
+    )
 
-    sweep_config["parameters"] = parameters_dict
-    sweep_config["metric"] = sweep_metric
+    best_trial = result.get_best_trial("eval_f1", "max", "last")
 
-    sweep_id = wandb.sweep(sweep_config, project="nairaland-hmc")
+    print("Best trial config: {}".format(best_trial.config))
+    print(
+        "Best trial final validation F1: {}".format(best_trial.last_result["eval_f1"])
+    )
 
-    print(sweep_id)
 
-    # wandb.agent(sweep_id, train, count=5)
+if __name__ == "__main__":
+    main()
