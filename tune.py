@@ -1,3 +1,4 @@
+import argparse
 from functools import partial
 import os
 import random
@@ -16,7 +17,7 @@ from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 
-from models import BERT_CON
+from models import BERT_CON, BERT_SCL, BERT_STL
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -28,11 +29,11 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
-def build_dataset(data_path, tokenizer, batch_size):
+def build_dataset(args, tokenizer, batch_size):
     data_files = {}
-    data_files["train"] = os.path.join(data_path, "train.csv")
-    data_files["validation"] = os.path.join(data_path, "dev.csv")
-    data_files["test"] = os.path.join(data_path, "test.csv")
+    data_files["train"] = os.path.join(args.data_dir, "train.csv")
+    data_files["validation"] = os.path.join(args.data_dir, "dev.csv")
+    data_files["test"] = os.path.join(args.data_dir, "test.csv")
 
     raw_datasets = load_dataset("csv", data_files=data_files)
 
@@ -40,7 +41,22 @@ def build_dataset(data_path, tokenizer, batch_size):
     label_list.sort()
     label_to_id = {v: i for i, v in enumerate(label_list)}
 
-    max_seq_length = 128
+    def preprocess_function_2(examples):
+        # Tokenize the texts
+        texts = (examples["text"],)
+        result = tokenizer(
+            *texts, padding="max_length", max_length=args.max_length, truncation=True
+        )
+
+        if "label" in examples:
+            if label_to_id is not None:
+                # Map labels to IDs (not necessary for GLUE tasks)
+                result["labels"] = [label_to_id[l] for l in examples["label"]]
+            else:
+                # In all cases, rename the column to labels because the model will expect that.
+                result["labels"] = examples["label"]
+
+        return result
 
     def preprocess_function(examples):
         input_ids_list = []
@@ -68,8 +84,8 @@ def build_dataset(data_path, tokenizer, batch_size):
             tokens_b = text_b
 
             # truncate the sentence to max_seq_len
-            if len(tokens_a) > max_seq_length - 2:
-                tokens_a = tokens_a[: (max_seq_length - 2)]
+            if len(tokens_a) > args.max_length - 2:
+                tokens_a = tokens_a[: (args.max_length - 2)]
 
             # Find the target word index
             for i, w in enumerate(wordpunct_tokenize(examples["text"][idx])):
@@ -103,15 +119,15 @@ def build_dataset(data_path, tokenizer, batch_size):
 
             # Zero-pad up to the sequence length.
             padding = [tokenizer.convert_tokens_to_ids(tokenizer.pad_token)] * (
-                max_seq_length - len(input_ids)
+                args.max_length - len(input_ids)
             )
             input_ids += padding
             input_mask += [0] * len(padding)
             segment_ids += [0] * len(padding)
 
-            assert len(input_ids) == max_seq_length
-            assert len(input_mask) == max_seq_length
-            assert len(segment_ids) == max_seq_length
+            assert len(input_ids) == args.max_length
+            assert len(input_mask) == args.max_length
+            assert len(segment_ids) == args.max_length
 
             input_ids_list.append(input_ids)
             attention_mask_list.append(input_mask)
@@ -132,15 +148,15 @@ def build_dataset(data_path, tokenizer, batch_size):
             input_mask_2 = [1] * len(input_ids_2)
 
             padding = [tokenizer.convert_tokens_to_ids(tokenizer.pad_token)] * (
-                max_seq_length - len(input_ids_2)
+                args.max_length - len(input_ids_2)
             )
             input_ids_2 += padding
             input_mask_2 += [0] * len(padding)
             segment_ids_2 += [0] * len(padding)
 
-            assert len(input_ids_2) == max_seq_length
-            assert len(input_mask_2) == max_seq_length
-            assert len(segment_ids_2) == max_seq_length
+            assert len(input_ids_2) == args.max_length
+            assert len(input_mask_2) == args.max_length
+            assert len(segment_ids_2) == args.max_length
 
             input_ids_2_list.append(input_ids_2)
             target_mask_2_list.append(segment_ids_2)
@@ -158,12 +174,20 @@ def build_dataset(data_path, tokenizer, batch_size):
         }
         return result
 
-    processed_datasets = raw_datasets.map(
-        preprocess_function,
-        batched=True,
-        remove_columns=raw_datasets["train"].column_names,
-        desc="Running tokenizer on dataset",
-    )
+    if args.model == "bert":
+        processed_datasets = raw_datasets.map(
+                    preprocess_function_2,
+                    batched=True,
+                    remove_columns=raw_datasets["train"].column_names,
+                    desc="Running tokenizer on dataset",
+                )
+    else:
+        processed_datasets = raw_datasets.map(
+            preprocess_function,
+            batched=True,
+            remove_columns=raw_datasets["train"].column_names,
+            desc="Running tokenizer on dataset",
+        )
 
     train_dataset = processed_datasets["train"]
     eval_dataset = processed_datasets["validation"]
@@ -219,17 +243,31 @@ def build_optimizer(model, learning_rate, max_train_steps):
     return optimizer, lr_scheduler
 
 
-def model_init(model_name_or_path, label_list, lam):
+def model_init(args, label_list, alpha=0.2, temperature=0.3):
     config = AutoConfig.from_pretrained(
-        model_name_or_path,
+        args.model_name_or_path,
         num_labels=len(label_list),
     )
+    if args.model == "con":
+        model = BERT_CON(
+            args.model_name_or_path,
+            len(label_list),
+            alpha=alpha,
+        )
+    elif args.model == "scl":
+        model = BERT_SCL(
+                args.model_name_or_path,
+                len(label_list),
+                alpha=alpha,
+                temperature=temperature,
+            )
+    elif args.model == "bert":
+        model = BERT_STL(
+                args.model_name_or_path,
+                len(label_list),
+                # args.dropout,
+            )
 
-    model = BERT_CON(
-        model_name_or_path,
-        len(label_list),
-        lam=lam,
-    )
     model.enc_model.config.label2id = {l: i for i, l in enumerate(label_list)}
     model.enc_model.config.id2label = {
         id: label for label, id in config.label2id.items()
@@ -237,8 +275,7 @@ def model_init(model_name_or_path, label_list, lam):
 
     return model
 
-
-def train(config, data_dir, model_name_or_path):
+def train(config, args):
     epochs = 5
 
     # For seed results
@@ -249,13 +286,13 @@ def train(config, data_dir, model_name_or_path):
         print(f"Running training with seed = {seed}")
         set_seed(seed)
 
-        tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
 
         train_dataloader, eval_dataloader, label_list = build_dataset(
-            data_dir, tokenizer, config["batch_size"]
+            args, tokenizer, config["batch_size"]
         )
 
-        model = model_init(model_name_or_path, label_list, config["lam"])
+        model = model_init(args, label_list, config["alpha"])
         model.to(device)
 
         num_update_steps_per_epoch = len(train_dataloader)
@@ -266,16 +303,16 @@ def train(config, data_dir, model_name_or_path):
 
         best_eval_f1 = 0
         for epoch in range(epochs):
+            model.train()
             for step, batch in enumerate(train_dataloader):
                 batch = {key: batch[key].to(device) for key in batch}
                 outputs = model(**batch)
                 loss = outputs[0]
                 loss.backward()
-
-                if step == len(train_dataloader) - 1:
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad()
+                
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
 
             model.eval()
             eval_loss = 0.0
@@ -298,7 +335,6 @@ def train(config, data_dir, model_name_or_path):
                     y_true = np.append(y_true, batch["labels"].detach().cpu().numpy())
 
             eval_loss = eval_loss / len(eval_dataloader)
-
             eval_f1 = f1_score(y_true, y_pred, average="macro")
 
             if eval_f1 > best_eval_f1:
@@ -314,32 +350,101 @@ def train(config, data_dir, model_name_or_path):
     print("Finished Training")
 
 
-def main(num_samples=2, max_num_epochs=2, gpus_per_trial=1):
-    data_dir = os.path.abspath("./data/sample/")
-    model_name_or_path = "bert-base-uncased"
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Tune model on HMC task"
+    )
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default=None,
+        help="Directory containing training and validation data",
+    )
+    parser.add_argument(
+        "--max_length",
+        type=int,
+        default=128,
+        help=(
+            "The maximum total input sequence length after tokenization. Sequences longer than this will be truncated,"
+            " sequences shorter will be padded if `--pad_to_max_lengh` is passed."
+        ),
+    )
+    parser.add_argument(
+        "--pad_to_max_length",
+        action="store_true",
+        help="If passed, pad all samples to `max_length`. Otherwise, dynamic padding is used.",
+    )
+    parser.add_argument(
+        "--model_name_or_path",
+        type=str,
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
+        required=True,
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=["bert", "con", "scl"],
+        required=True,
+        help="the name of the model to use. some models may use different model args than others.",
+    )
+    parser.add_argument(
+        "--num_cpu", type=int, default=1, help="Number of cpu"
+    )
+    parser.add_argument(
+        "--num_trials", type=int, default=20, help="Number of trials"
+    )
+    parser.add_argument(
+        "--max_num_epochs", type=int, default=5, help="Max no of epochs"
+    )
+    parser.add_argument(
+        "--gpus_per_trial", type=int, default=1, help="Max no of GPUs per trial"
+    )
+
+    args = parser.parse_args()
+
+    return args
+
+def main():
+    args = parse_args()
+    args.data_dir = os.path.abspath(args.data_dir)
 
     datasets.utils.logging.set_verbosity_error()
     transformers.utils.logging.set_verbosity_error()
 
     # hyperparameters
-    config = {
-        "batch_size": tune.choice([8, 16, 32]),
-        "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
-        "lam": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5]),
-    }
+    if args.model == "con":
+        config = {
+            "batch_size": tune.choice([8, 16, 32]),
+            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
+            "alpha": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5]),
+        }
+    elif args.model == "scl":
+        config = {
+            "batch_size": tune.choice([8, 16, 32]),
+            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
+            "alpha": tune.choice([0.1, 0.3, 0.5, 0.7, 0.9, 1.0]),
+            "temperature": tune.choice([0.1, 0.3, 0.5, 0.7]),
+        }
+    elif args.model == "bert":
+        config = {
+            "batch_size": tune.choice([8, 16, 32]),
+            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
+        }
+
+
     scheduler = ASHAScheduler(
         metric="eval_f1",
         mode="max",
-        max_t=max_num_epochs,
+        max_t=args.max_num_epochs,
         grace_period=1,
         reduction_factor=2,
     )
     reporter = CLIReporter(metric_columns=["eval_f1", "training_iteration"])
     result = tune.run(
-        partial(train, data_dir=data_dir, model_name_or_path=model_name_or_path),
-        resources_per_trial={"cpu": 4, "gpu": gpus_per_trial},
+        partial(train, args=args),
+        resources_per_trial={"cpu": args.num_cpu, "gpu": args.gpus_per_trial},
         config=config,
-        num_samples=num_samples,
+        num_samples=args.num_trials,
         scheduler=scheduler,
         progress_reporter=reporter,
     )

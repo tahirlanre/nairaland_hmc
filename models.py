@@ -10,13 +10,13 @@ import numpy as np
 
 class BERT_CON(nn.Module):
     def __init__(
-        self, enc_model_name_or_path, num_labels, lam, dropout=0.2
+        self, enc_model_name_or_path, num_labels, alpha, dropout=0.2
     ) -> None:
         super().__init__()
 
         self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)
         self.num_labels = num_labels
-        self.lam = lam
+        self.alpha = alpha
 
         self.classifier = nn.Linear(768, num_labels)
 
@@ -70,21 +70,21 @@ class BERT_CON(nn.Module):
                 target_output.cpu().detach().numpy(),
                 labels,
             )
-            loss = ((1 - self.lam) * cross_loss) + (self.lam * contrastive_l)
+            loss =  cross_loss + (self.alpha * contrastive_l)
         output = (logits,)
 
         return ((loss,) + output) if loss is not None else output
 
 class BERT_SCL(nn.Module):
     def __init__(
-        self, enc_model_name_or_path, num_labels, lam, temperature, dropout=0.2
+        self, enc_model_name_or_path, num_labels, alpha, temperature, dropout=0.2
     ) -> None:
         super().__init__()
 
         self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)
         self.num_labels = num_labels
 
-        self.lam = lam
+        self.alpha = alpha
         self.temperature = temperature
         
         self.classifier = nn.Linear(768, num_labels)
@@ -172,7 +172,7 @@ class BERT_SCL(nn.Module):
                 target_output_2.cpu().detach().numpy(),
                 labels,
             )
-            loss = (self.lam * contrastive_l) + (1 - self.lam) * (cross_loss)
+            loss = (self.alpha * contrastive_l) + (1 - self.alpha) * (cross_loss)
         output = (logits,)
 
         return ((loss,) + output) if loss is not None else output
