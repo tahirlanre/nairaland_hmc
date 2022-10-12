@@ -291,9 +291,16 @@ def train(config, args):
         train_dataloader, eval_dataloader, label_list = build_dataset(
             args, tokenizer, config["batch_size"]
         )
-
-        model = model_init(args, label_list, config["alpha"])
-        model.to(device)
+        
+        if args.model == "con":
+            model = model_init(args, label_list, alpha=config["alpha"])
+            model.to(device)
+        elif args.model == "scl":
+            model = model_init(args, label_list, alpha=config["alpha"], temperature=config["temperature"])
+            model.to(device)
+        elif args.model == "bert":
+            model = model_init(args, label_list)
+            model.to(device)
 
         num_update_steps_per_epoch = len(train_dataloader)
         max_train_steps = epochs * num_update_steps_per_epoch
