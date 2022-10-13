@@ -32,7 +32,7 @@ class BERT_CON(nn.Module):
                         c_loss += dist
                     else:
                         c_loss += max(0, (gamma - dist))
-        return c_loss               
+        return c_loss / len(embeddings)              
                 
     def forward(
         self,
@@ -66,9 +66,11 @@ class BERT_CON(nn.Module):
             loss_fn = nn.CrossEntropyLoss()
             cross_loss = loss_fn(logits, labels)
 
+            literal_labels = (labels == 2).int()
+
             contrastive_l = self.contrastive_loss(
                 target_output.cpu().detach().numpy(),
-                labels,
+                literal_labels,
             )
             loss =  cross_loss + (self.alpha * contrastive_l)
         output = (logits,)
@@ -165,12 +167,13 @@ class BERT_SCL(nn.Module):
         if labels is not None:
             loss_fn = nn.CrossEntropyLoss()
             cross_loss = loss_fn(logits, labels)
-
+            
+            literal_labels = (labels == 2).int()
             contrastive_l = self.contrastive_loss(
                 self.temperature,
                 target_output.cpu().detach().numpy(),
                 target_output_2.cpu().detach().numpy(),
-                labels,
+                literal_labels,
             )
             loss = (self.alpha * contrastive_l) + (1 - self.alpha) * (cross_loss)
         output = (logits,)

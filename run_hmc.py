@@ -754,10 +754,11 @@ def main():
             )
 
             eval_loss = eval_loss / len(eval_dataloader)
-            logger.info(f"epoch {epoch}: eval loss: {eval_loss}")
 
             eval_metric = metric.compute(average="macro")
             eval_f1 = eval_metric["f1"]
+
+            logger.info(f"epoch {epoch}: eval loss: {eval_loss}, eval F1: {eval_f1}")
 
             if eval_f1 > best_eval_f1:
                 logger.info("Saving best model")
