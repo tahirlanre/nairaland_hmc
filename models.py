@@ -208,4 +208,61 @@ class BERT_STL(nn.Module):
 
         return ((loss,) + output) if loss is not None else output
 
+class BERT_MTL(nn.Module):
+    def __init__(self, enc_model_name_or_path, num_labels, alpha, dropout=0.2) -> None:
+        super().__init__()
+
+        self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)
+        self.num_labels = num_labels
+        self.alpha = alpha
+
+        self.classifier = nn.Linear(768, num_labels)
+        self.literal_classifier = nn.Linear(768, num_labels)
+        self.dense = nn.Linear(768, 768)
+        self.activation = nn.Tanh()
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(
+        self,
+        input_ids,
+        input_ids_2,
+        attention_mask_2,
+        target_index,
+        attention_mask=None,
+        token_type_ids=None,
+        labels=None,
+    ):
+        outputs = self.enc_model(input_ids, attention_mask=attention_mask)
+        sequence_output = outputs[0]
+        pooled_output = outputs[1]
+
+        # Get target ouput with target mask
+        target_output = []
+        for i, idx in enumerate(target_index):
+            target_output.append(sequence_output[i, idx, :])
+        target_output = torch.stack(target_output)
+        # target_output = sequence_output[:, 0, :]
+
+        pooled_output = self.dropout(pooled_output)
+
+        logits = self.classifier(pooled_output)
+
+        # literal module
+        pooled_output_2 = self.dropout(target_output) #self.dropout(self.activation(self.dense(target_output)))
+        literal_logits = self.classifier(pooled_output_2)
+        loss = None
+        if labels is not None:
+            loss_fn = nn.CrossEntropyLoss()
+            seq_loss = loss_fn(logits, labels)
+
+            literal_labels = (labels == 2).type(torch.LongTensor)
+            literal_loss = loss_fn(literal_logits, literal_labels.cuda())
+
+            loss =  seq_loss + (self.alpha * literal_loss)
+        output = (logits,)
+
+        return ((loss,) + output) if loss is not None else output
+
+
 

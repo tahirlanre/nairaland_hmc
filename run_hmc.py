@@ -46,7 +46,7 @@ from transformers.utils import send_example_telemetry
 from transformers.utils.versions import require_version
 
 
-from models import BERT_SCL, BERT_STL, BERT_CON
+from models import BERT_MTL, BERT_SCL, BERT_STL, BERT_CON
 
 
 logger = get_logger(__name__)
@@ -108,7 +108,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        choices=["stl", "con", "scl"],
+        choices=["stl", "con", "scl", "mtl"],
         required=True,
         help="the name of the model to use. some models may use different model args than others.",
     )
@@ -248,9 +248,9 @@ def parse_args():
             "json",
         ], "`test_file` should be a csv or a json file."
 
-    if args.model == "mtl" or args.model == "mtl_attn" or args.model == "mtl_max":
-        if args.emotion_model_name_or_path is None:
-            raise ValueError("Need an emotion pre-trained model")
+    # if args.model == "mtl" or args.model == "mtl_attn" or args.model == "mtl_max":
+    #     if args.emotion_model_name_or_path is None:
+    #         raise ValueError("Need an emotion pre-trained model")
 
     return args
 
@@ -342,6 +342,12 @@ def main():
             )
         elif args.model == "con":
             model = BERT_CON(
+                args.model_name_or_path,
+                num_labels,
+                alpha=args.alpha,
+            )
+        elif args.model == "mtl":
+            model = BERT_MTL(
                 args.model_name_or_path,
                 num_labels,
                 alpha=args.alpha,
@@ -495,7 +501,7 @@ def main():
             return result
 
         with accelerator.main_process_first():
-            if args.model == "scl" or args.model == "con":
+            if args.model == "scl" or args.model == "con" or args.model == "mtl":
                 processed_datasets = raw_datasets.map(
                     preprocess_function_2,
                     batched=True,
