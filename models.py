@@ -18,7 +18,7 @@ class BERT_CON(nn.Module):
         self.num_labels = num_labels
         self.alpha = alpha
 
-        self.classifier = nn.Linear(768, num_labels)
+        self.classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
 
         self.dropout = nn.Dropout(dropout)
 
@@ -66,11 +66,9 @@ class BERT_CON(nn.Module):
             loss_fn = nn.CrossEntropyLoss()
             cross_loss = loss_fn(logits, labels)
 
-            literal_labels = (labels == 2).int()
-
             contrastive_l = self.contrastive_loss(
                 target_output.cpu().detach().numpy(),
-                literal_labels,
+                labels,
             )
             loss =  cross_loss + (self.alpha * contrastive_l)
         output = (logits,)
@@ -89,7 +87,7 @@ class BERT_SCL(nn.Module):
         self.alpha = alpha
         self.temperature = temperature
         
-        self.classifier = nn.Linear(768, num_labels)
+        self.classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
 
         self.dropout = nn.Dropout(dropout)            
                 
@@ -168,12 +166,11 @@ class BERT_SCL(nn.Module):
             loss_fn = nn.CrossEntropyLoss()
             cross_loss = loss_fn(logits, labels)
             
-            literal_labels = (labels == 2).int()
             contrastive_l = self.contrastive_loss(
                 self.temperature,
                 target_output.cpu().detach().numpy(),
                 target_output_2.cpu().detach().numpy(),
-                literal_labels,
+                labels,
             )
             loss = (self.alpha * contrastive_l) + (1 - self.alpha) * (cross_loss)
         output = (logits,)
@@ -187,7 +184,7 @@ class BERT_STL(nn.Module):
         self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)
         self.num_labels = num_labels
 
-        self.classifier = nn.Linear(768, num_labels)
+        self.classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
 
         self.dropout = nn.Dropout(dropout)
 
@@ -216,9 +213,9 @@ class BERT_MTL(nn.Module):
         self.num_labels = num_labels
         self.alpha = alpha
 
-        self.classifier = nn.Linear(768, num_labels)
-        self.literal_classifier = nn.Linear(768, num_labels)
-        self.dense = nn.Linear(768, 768)
+        self.classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
+        self.literal_classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
+        self.dense = nn.Linear(self.enc_model.config.hidden_size, self.enc_model.config.hidden_size)
         self.activation = nn.Tanh()
 
         self.dropout = nn.Dropout(dropout)
@@ -249,8 +246,8 @@ class BERT_MTL(nn.Module):
         logits = self.classifier(pooled_output)
 
         # literal module
-        pooled_output_2 = self.dropout(target_output) #self.dropout(self.activation(self.dense(target_output)))
-        literal_logits = self.classifier(pooled_output_2)
+        target_output = self.dropout(target_output) 
+        literal_logits = self.classifier(target_output)
         loss = None
         if labels is not None:
             loss_fn = nn.CrossEntropyLoss()

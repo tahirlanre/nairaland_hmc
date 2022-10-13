@@ -17,7 +17,7 @@ from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 
-from models import BERT_CON, BERT_SCL, BERT_STL
+from models import BERT_CON, BERT_MTL, BERT_SCL, BERT_STL
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -265,8 +265,13 @@ def model_init(args, label_list, alpha=0.2, temperature=0.3):
         model = BERT_STL(
                 args.model_name_or_path,
                 len(label_list),
-                # args.dropout,
             )
+    if args.model == "mtl":
+        model = BERT_MTL(
+            args.model_name_or_path,
+            len(label_list),
+            alpha=alpha,
+        )
 
     model.enc_model.config.label2id = {l: i for i, l in enumerate(label_list)}
     model.enc_model.config.id2label = {
@@ -300,6 +305,9 @@ def train(config, args):
             model.to(device)
         elif args.model == "bert":
             model = model_init(args, label_list)
+            model.to(device)
+        elif args.model == "mtl":
+            model = model_init(args, label_list, alpha=config["alpha"])
             model.to(device)
 
         num_update_steps_per_epoch = len(train_dataloader)
@@ -390,7 +398,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        choices=["bert", "con", "scl"],
+        choices=["bert", "con", "scl", "mtl"],
         required=True,
         help="the name of the model to use. some models may use different model args than others.",
     )
@@ -436,6 +444,12 @@ def main():
         config = {
             "batch_size": tune.choice([8, 16, 32]),
             "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
+        }
+    elif args.model == "mtl":
+        config = {
+            "batch_size": tune.choice([8, 16, 32]),
+            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
+            "alpha": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]),
         }
 
 
