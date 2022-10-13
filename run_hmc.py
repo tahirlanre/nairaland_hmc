@@ -685,6 +685,7 @@ def main():
 
         best_model = None
         best_eval_loss = float("inf")
+        best_eval_f1 = 0.0
         for epoch in range(starting_epoch, args.num_train_epochs):
             model.train()
             if args.with_tracking:
@@ -735,17 +736,36 @@ def main():
                     (predictions, batch["labels"])
                 )
                 eval_loss += outputs[0].item()
+
+            # If we are in a multiprocess environment, the last batch has duplicates
+            if accelerator.num_processes > 1:
+                if step == len(test_dataloader) - 1:
+                    predictions = predictions[
+                        : len(test_dataloader.dataset) - samples_seen
+                    ]
+                    references = references[
+                        : len(test_dataloader.dataset) - samples_seen
+                    ]
+                else:
+                    samples_seen += references.shape[0]
+            metric.add_batch(
+                predictions=predictions,
+                references=references,
+            )
+
             eval_loss = eval_loss / len(eval_dataloader)
             logger.info(f"epoch {epoch}: eval loss: {eval_loss}")
 
-            if eval_loss < best_eval_loss:
+            eval_metric = metric.compute(average="macro")
+            eval_f1 = eval_metric["f1"]
+
+            if eval_f1 > best_eval_f1:
                 logger.info("Saving best model")
-                best_eval_loss = eval_loss
+                best_eval_f1 = eval_f1
                 best_model = copy.deepcopy(model)
 
         # evaluate best model on test data
-        # best_model = accelerator.prepare(best_model)
-        best_model.eval()
+        best_model = accelerator.prepare(best_model)
         for step, batch in enumerate(test_dataloader):
             with torch.no_grad():
                 outputs = model(**batch)
