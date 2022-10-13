@@ -139,7 +139,7 @@ def parse_args():
         "--weight_decay", type=float, default=0.0, help="Weight decay to use."
     )
     parser.add_argument(
-        "--lam",
+        "--alpha",
         type=float,
         default=0.2,
         help="Weighting hyperparameter for the loss functions",
@@ -337,14 +337,14 @@ def main():
             model = BERT_SCL(
                 args.model_name_or_path,
                 num_labels,
-                lam=args.lam,
+                alpha=args.alpha,
                 temperature=args.temperature,
             )
         elif args.model == "con":
             model = BERT_CON(
                 args.model_name_or_path,
                 num_labels,
-                lam=args.lam,
+                alpha=args.alpha,
             )
 
         # Some models have set the order of the labels to use, so let's make sure we do use it.
