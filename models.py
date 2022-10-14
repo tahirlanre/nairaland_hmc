@@ -206,7 +206,7 @@ class BERT_STL(nn.Module):
         return ((loss,) + output) if loss is not None else output
 
 class BERT_MTL(nn.Module):
-    def __init__(self, enc_model_name_or_path, num_labels, alpha, dropout=0.2) -> None:
+    def __init__(self, enc_model_name_or_path, num_labels, alpha=0.2, dropout=0.2) -> None:
         super().__init__()
 
         self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)

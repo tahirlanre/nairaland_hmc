@@ -266,7 +266,7 @@ def model_init(args, label_list, alpha=0.2, temperature=0.3):
                 args.model_name_or_path,
                 len(label_list),
             )
-    if args.model == "mtl":
+    elif args.model == "mtl":
         model = BERT_MTL(
             args.model_name_or_path,
             len(label_list),
@@ -307,7 +307,7 @@ def train(config, args):
             model = model_init(args, label_list)
             model.to(device)
         elif args.model == "mtl":
-            model = model_init(args, label_list, alpha=config["alpha"])
+            model = model_init(args, label_list)
             model.to(device)
 
         num_update_steps_per_epoch = len(train_dataloader)
@@ -316,12 +316,20 @@ def train(config, args):
             model, config["learning_rate"], max_train_steps
         )
 
+        num_train_steps = epochs * len(train_dataloader) 
+        global_steps = 0
+
         best_eval_f1 = 0
         for epoch in range(epochs):
             model.train()
             for step, batch in enumerate(train_dataloader):
+                global_steps += 1
                 batch = {key: batch[key].to(device) for key in batch}
-                outputs = model(**batch)
+                if args.model == "mtl":
+                    percent_done = global_steps / num_train_steps
+                    outputs = model(**batch, percent_done=percent_done)
+                else:
+                    outputs = model(**batch)
                 loss = outputs[0]
                 loss.backward()
                 
@@ -378,7 +386,7 @@ def parse_args():
     parser.add_argument(
         "--max_length",
         type=int,
-        default=128,
+        default=150,
         help=(
             "The maximum total input sequence length after tokenization. Sequences longer than this will be truncated,"
             " sequences shorter will be padded if `--pad_to_max_lengh` is passed."
@@ -447,9 +455,9 @@ def main():
         }
     elif args.model == "mtl":
         config = {
-            "batch_size": tune.choice([8, 16, 32]),
+            "batch_size": tune.choice([8, 16, 32, 64]),
             "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
-            "alpha": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]),
+            # "alpha": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]),
         }
 
 

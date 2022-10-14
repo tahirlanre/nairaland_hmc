@@ -82,7 +82,7 @@ def parse_args():
     parser.add_argument(
         "--max_length",
         type=int,
-        default=128,
+        default=150,
         help=(
             "The maximum total input sequence length after tokenization. Sequences longer than this will be truncated,"
             " sequences shorter will be padded if `--pad_to_max_lengh` is passed."
@@ -98,12 +98,6 @@ def parse_args():
         type=str,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
         required=True,
-    )
-    parser.add_argument(
-        "--emotion_model_name_or_path",
-        type=str,
-        help="Path to pretrained model on emotion representatons.",
-        # required=True,
     )
     parser.add_argument(
         "--model",
@@ -191,38 +185,6 @@ def parse_args():
     parser.add_argument(
         "--output_dir", type=str, default=None, help="Where to store the final model."
     )
-    parser.add_argument(
-        "--checkpointing_steps",
-        type=str,
-        default=None,
-        help="Whether the various states should be saved at the end of every n steps, or 'epoch' for each epoch.",
-    )
-    parser.add_argument(
-        "--resume_from_checkpoint",
-        type=str,
-        default=None,
-        help="If the training should continue from a checkpoint folder.",
-    )
-    parser.add_argument(
-        "--with_tracking",
-        action="store_true",
-        help="Whether to enable experiment trackers for logging.",
-    )
-    parser.add_argument(
-        "--report_to",
-        type=str,
-        default="all",
-        help=(
-            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
-            ' `"wandb"` and `"comet_ml"`. Use `"all"` (default) to report to all integrations.'
-            "Only applicable when `--with_tracking` is passed."
-        ),
-    )
-    parser.add_argument(
-        "--ignore_mismatched_sizes",
-        action="store_true",
-        help="Whether or not to enable to load a pretrained model whose head dimensions are different.",
-    )
     args = parser.parse_args()
 
     # Sanity checks
@@ -248,10 +210,6 @@ def parse_args():
             "json",
         ], "`test_file` should be a csv or a json file."
 
-    # if args.model == "mtl" or args.model == "mtl_attn" or args.model == "mtl_max":
-    #     if args.emotion_model_name_or_path is None:
-    #         raise ValueError("Need an emotion pre-trained model")
-
     return args
 
 
@@ -264,11 +222,7 @@ def main():
     # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
     # If we're using tracking, we also need to initialize it here and it will by default pick up all supported trackers
     # in the environment
-    accelerator = (
-        Accelerator(log_with=args.report_to, logging_dir=args.output_dir)
-        if args.with_tracking
-        else Accelerator()
-    )
+    accelerator = ( Accelerator())
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -659,35 +613,7 @@ def main():
             range(args.max_train_steps), disable=not accelerator.is_local_main_process
         )
         completed_steps = 0
-        starting_epoch = 0
-        # Potentially load in the weights and states from a previous save
-        if args.resume_from_checkpoint:
-            if (
-                args.resume_from_checkpoint is not None
-                or args.resume_from_checkpoint != ""
-            ):
-                accelerator.print(
-                    f"Resumed from checkpoint: {args.resume_from_checkpoint}"
-                )
-                accelerator.load_state(args.resume_from_checkpoint)
-                path = os.path.basename(args.resume_from_checkpoint)
-            else:
-                # Get the most recent checkpoint
-                dirs = [f.name for f in os.scandir(os.getcwd()) if f.is_dir()]
-                dirs.sort(key=os.path.getctime)
-                path = dirs[
-                    -1
-                ]  # Sorts folders by date modified, most recent checkpoint is the last
-            # Extract `epoch_{i}` or `step_{i}`
-            training_difference = os.path.splitext(path)[0]
-
-            if "epoch" in training_difference:
-                starting_epoch = int(training_difference.replace("epoch_", "")) + 1
-                resume_step = None
-            else:
-                resume_step = int(training_difference.replace("step_", ""))
-                starting_epoch = resume_step // len(train_dataloader)
-                resume_step -= starting_epoch * len(train_dataloader)
+        starting_epoch = 0        
 
         num_train_steps = args.num_train_epochs * len(train_dataloader) 
         
@@ -697,8 +623,6 @@ def main():
         best_eval_f1 = 0.0
         for epoch in range(starting_epoch, args.num_train_epochs):
             model.train()
-            if args.with_tracking:
-                total_loss = 0
             for step, batch in enumerate(train_dataloader):
                 global_steps += 1
                 if args.model == "mtl":
@@ -707,9 +631,6 @@ def main():
                 else:
                     outputs = model(**batch, percent_done=percent_done)
                 loss = outputs[0]
-                # We keep track of the loss at each epoch
-                if args.with_tracking:
-                    total_loss += loss.detach().float()
                 loss = loss / args.gradient_accumulation_steps
                 accelerator.backward(loss)
                 if (
@@ -735,9 +656,7 @@ def main():
             model.eval()
             samples_seen = 0
             eval_loss = 0.0
-            # import pdb; pdb.set_trace()
             for step, batch in enumerate(eval_dataloader):
-                # print(batch["labels"])
                 with torch.no_grad():
                     outputs = model(**batch)
                 predictions = outputs[1].argmax(dim=-1)
