@@ -307,7 +307,10 @@ def train(config, args):
             model = model_init(args, label_list)
             model.to(device)
         elif args.model == "mtl":
-            model = model_init(args, label_list)
+            if args.anneal:
+                model = model_init(args, label_list)
+            else:
+                model = model_init(args, alpha=config["alpha"])
             model.to(device)
 
         num_update_steps_per_epoch = len(train_dataloader)
@@ -325,7 +328,7 @@ def train(config, args):
             for step, batch in enumerate(train_dataloader):
                 global_steps += 1
                 batch = {key: batch[key].to(device) for key in batch}
-                if args.model == "mtl":
+                if args.model == "mtl" and args.anneal:
                     percent_done = global_steps / num_train_steps
                     outputs = model(**batch, percent_done=percent_done)
                 else:
@@ -372,7 +375,6 @@ def train(config, args):
 
     print("Finished Training")
 
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Tune model on HMC task"
@@ -409,6 +411,11 @@ def parse_args():
         choices=["bert", "con", "scl", "mtl"],
         required=True,
         help="the name of the model to use. some models may use different model args than others.",
+    )
+    parser.add_argument(
+        "--anneal",
+        action='store_true',
+        help="To apply annealing to alpha",
     )
     parser.add_argument(
         "--num_cpu", type=int, default=1, help="Number of cpu"
@@ -457,9 +464,9 @@ def main():
         config = {
             "batch_size": tune.choice([8, 16, 32, 64]),
             "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
-            # "alpha": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]),
         }
-
+        if not args.anneal:
+            config["alpha"] = tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
 
     scheduler = ASHAScheduler(
         metric="eval_f1",

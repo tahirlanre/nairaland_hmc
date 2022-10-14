@@ -145,6 +145,11 @@ def parse_args():
         help="scalar temperature parameter that controls the separation of classes",
     )
     parser.add_argument(
+        "--anneal",
+        action='store_true',
+        help="To apply annealing to alpha",
+    )
+    parser.add_argument(
         "--num_train_epochs",
         type=int,
         default=3,
@@ -573,18 +578,7 @@ def main():
             args.max_train_steps / num_update_steps_per_epoch
         )
 
-        # Figure out how many steps we should save the Accelerator states
-        if hasattr(args.checkpointing_steps, "isdigit"):
-            checkpointing_steps = args.checkpointing_steps
-            if args.checkpointing_steps.isdigit():
-                checkpointing_steps = int(args.checkpointing_steps)
-        else:
-            checkpointing_steps = None
-
         # Get the metric function
-        # if args.task_name is not None:
-        #     metric = evaluate.load("glue", args.task_name)
-        # else:
         metric = evaluate.load("f1")
 
         # Train!
@@ -625,11 +619,11 @@ def main():
             model.train()
             for step, batch in enumerate(train_dataloader):
                 global_steps += 1
-                if args.model == "mtl":
+                if args.model == "mtl" and args.anneal:
                     percent_done = global_steps / num_train_steps
                     outputs = model(**batch, percent_done=percent_done)
                 else:
-                    outputs = model(**batch, percent_done=percent_done)
+                    outputs = model(**batch)
                 loss = outputs[0]
                 loss = loss / args.gradient_accumulation_steps
                 accelerator.backward(loss)
@@ -643,15 +637,6 @@ def main():
                     progress_bar.update(1)
                     completed_steps += 1
 
-                if isinstance(checkpointing_steps, int):
-                    if completed_steps % checkpointing_steps == 0:
-                        output_dir = f"step_{completed_steps }"
-                        if args.output_dir is not None:
-                            output_dir = os.path.join(args.output_dir, output_dir)
-                        accelerator.save_state(output_dir)
-
-                if completed_steps >= args.max_train_steps:
-                    break
 
             model.eval()
             samples_seen = 0

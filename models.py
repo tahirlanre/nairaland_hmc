@@ -214,9 +214,7 @@ class BERT_MTL(nn.Module):
         self.alpha = alpha
 
         self.classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
-        self.literal_classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
-        self.dense = nn.Linear(self.enc_model.config.hidden_size, self.enc_model.config.hidden_size)
-        self.activation = nn.Tanh()
+        self.literal_classifier = nn.Linear(self.enc_model.config.hidden_size, 2)
 
         self.dropout = nn.Dropout(dropout)
 
@@ -248,7 +246,7 @@ class BERT_MTL(nn.Module):
         # literal module
         target_output = self.dropout(target_output) 
         literal_logits = self.classifier(target_output)
-        
+
         if percent_done:
             self.alpha = percent_done
             
@@ -264,6 +262,3 @@ class BERT_MTL(nn.Module):
         output = (logits,)
 
         return ((loss,) + output) if loss is not None else output
-
-
-
