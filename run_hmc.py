@@ -689,6 +689,9 @@ def main():
                 starting_epoch = resume_step // len(train_dataloader)
                 resume_step -= starting_epoch * len(train_dataloader)
 
+        num_train_steps = args.num_train_epochs * len(train_dataloader) 
+        
+        global_steps = 0
         best_model = None
         best_eval_loss = float("inf")
         best_eval_f1 = 0.0
@@ -697,12 +700,12 @@ def main():
             if args.with_tracking:
                 total_loss = 0
             for step, batch in enumerate(train_dataloader):
-                # We need to skip steps until we reach the resumed step
-                if args.resume_from_checkpoint and epoch == starting_epoch:
-                    if resume_step is not None and step < resume_step:
-                        completed_steps += 1
-                        continue
-                outputs = model(**batch)
+                global_steps += 1
+                if args.model == "mtl":
+                    percent_done = global_steps / num_train_steps
+                    outputs = model(**batch, percent_done=percent_done)
+                else:
+                    outputs = model(**batch, percent_done=percent_done)
                 loss = outputs[0]
                 # We keep track of the loss at each epoch
                 if args.with_tracking:

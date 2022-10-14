@@ -229,6 +229,7 @@ class BERT_MTL(nn.Module):
         attention_mask=None,
         token_type_ids=None,
         labels=None,
+        percent_done=0
     ):
         outputs = self.enc_model(input_ids, attention_mask=attention_mask)
         sequence_output = outputs[0]
@@ -239,7 +240,6 @@ class BERT_MTL(nn.Module):
         for i, idx in enumerate(target_index):
             target_output.append(sequence_output[i, idx, :])
         target_output = torch.stack(target_output)
-        # target_output = sequence_output[:, 0, :]
 
         pooled_output = self.dropout(pooled_output)
 
@@ -248,6 +248,10 @@ class BERT_MTL(nn.Module):
         # literal module
         target_output = self.dropout(target_output) 
         literal_logits = self.classifier(target_output)
+        
+        if percent_done:
+            self.alpha = percent_done
+            
         loss = None
         if labels is not None:
             loss_fn = nn.CrossEntropyLoss()
