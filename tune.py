@@ -18,6 +18,7 @@ from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 
 from models import BERT_CON, BERT_MTL, BERT_SCL, BERT_STL
+from config import SEEDS
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -285,9 +286,9 @@ def train(config, args):
 
     # For seed results
     results = {}
-    seeds = [42, 52, 62, 72, 100]
 
-    for seed in seeds:
+    for run in range(args.num_runs):
+        seed = SEEDS[run]
         print(f"Running training with seed = {seed}")
         set_seed(seed)
 
@@ -422,6 +423,13 @@ def parse_args():
     )
     parser.add_argument(
         "--num_trials", type=int, default=20, help="Number of trials"
+    )
+    parser.add_argument(
+        "--num_runs",
+        type=int,
+        default=5,
+        help="the number of random restarts to average. we have 5 random seeds predefined in config.py; more "
+        "restarts than this will cause an error unless you add more seeds.",
     )
     parser.add_argument(
         "--max_num_epochs", type=int, default=5, help="Max no of epochs"

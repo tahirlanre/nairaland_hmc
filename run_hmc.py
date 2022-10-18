@@ -47,7 +47,7 @@ from transformers.utils.versions import require_version
 
 
 from models import BERT_MTL, BERT_SCL, BERT_STL, BERT_CON
-
+from config import SEEDS
 
 logger = get_logger(__name__)
 
@@ -168,6 +168,13 @@ def parse_args():
         help="Number of updates steps to accumulate before performing a backward/update pass.",
     )
     parser.add_argument(
+        "--num_runs",
+        type=int,
+        default=5,
+        help="the number of random restarts to average. we have 5 random seeds predefined in config.py; more "
+        "restarts than this will cause an error unless you add more seeds.",
+    )
+    parser.add_argument(
         "--lr_scheduler_type",
         type=SchedulerType,
         default="linear",
@@ -246,9 +253,11 @@ def main():
     results = {}
 
     # list of seeds
-    seeds = [42 , 52, 62, 72, 100]
-    for seed in seeds:
+
+    best_test_f1 = 0.
+    for run in range(args.num_runs):
         # set training seed
+        seed = SEEDS[run]
         set_seed(seed)
 
         accelerator.wait_for_everyone()
@@ -613,7 +622,6 @@ def main():
         
         global_steps = 0
         best_model = None
-        best_eval_loss = float("inf")
         best_eval_f1 = 0.0
         for epoch in range(starting_epoch, args.num_train_epochs):
             model.train()
@@ -636,7 +644,6 @@ def main():
                     optimizer.zero_grad()
                     progress_bar.update(1)
                     completed_steps += 1
-
 
             model.eval()
             samples_seen = 0
@@ -710,24 +717,14 @@ def main():
         logger.info("--------------------------------")
 
         results[seed] = test_metric
-
-        if args.output_dir is not None:
-            accelerator.wait_for_everyone()
-            unwrapped_model = accelerator.unwrap_model(model)
-            unwrapped_model.save_pretrained(
-                args.output_dir,
-                is_main_process=accelerator.is_main_process,
-                save_function=accelerator.save,
-            )
-            if accelerator.is_main_process:
-                tokenizer.save_pretrained(args.output_dir)
-
-        if args.output_dir is not None:
-            with open(os.path.join(args.output_dir, "all_results.json"), "w") as f:
-                json.dump({"eval_f1": test_metric["f1"]}, f)
+        if test_metric["f1"] > best_test_f1:
+            if args.output_dir is not None:
+                with open(os.path.join(args.output_dir, "test_predictions.txt"), "w") as f:
+                    for idx, prediciton in enumerate(predictions):
+                        f.write(f"{idx}\t{prediciton}\n")
 
     # Print fold results
-    print(f"RESULTS FOR {len(seeds)} SEEDS")
+    print(f"RESULTS FOR {args.num_runs} SEEDS")
     print("--------------------------------")
     counter = collections.Counter()
     for key, result in results.items():
