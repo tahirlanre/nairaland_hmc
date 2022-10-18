@@ -22,8 +22,9 @@ import math
 import os
 from pathlib import Path
 
-import datasets
 import torch
+import numpy as np
+import datasets
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -687,29 +688,40 @@ def main():
 
         # evaluate best model on test data
         best_model = accelerator.prepare(best_model)
+        predictions = None
+        references = None
         for step, batch in enumerate(test_dataloader):
             with torch.no_grad():
                 outputs = model(**batch)
-            predictions = outputs[1].argmax(dim=-1)
-            predictions, references = accelerator.gather((predictions, batch["labels"]))
-            # If we are in a multiprocess environment, the last batch has duplicates
-            if accelerator.num_processes > 1:
-                if step == len(test_dataloader) - 1:
-                    predictions = predictions[
-                        : len(test_dataloader.dataset) - samples_seen
-                    ]
-                    references = references[
-                        : len(test_dataloader.dataset) - samples_seen
-                    ]
-                else:
-                    samples_seen += references.shape[0]
-            metric.add_batch(
-                predictions=predictions,
-                references=references,
-            )
+            if predictions is None:
+                predictions = outputs[1].argmax(dim=-1).detach().cpu().numpy()
+                references = batch["labels"].detach().cpu().numpy()
+            else:
+                predictions = np.append(
+                    predictions, outputs[1].argmax(dim=-1).detach().cpu().numpy()
+                )
+                references = np.append(
+                    references, batch["labels"].detach().cpu().numpy()
+                )
+            # predictions, references = accelerator.gather((predictions, batch["labels"]))
+            # # If we are in a multiprocess environment, the last batch has duplicates
+            # if accelerator.num_processes > 1:
+            #     if step == len(test_dataloader) - 1:
+            #         predictions = predictions[
+            #             : len(test_dataloader.dataset) - samples_seen
+            #         ]
+            #         references = references[
+            #             : len(test_dataloader.dataset) - samples_seen
+            #         ]
+            #     else:
+            #         samples_seen += references.shape[0]
+            # metric.add_batch(
+            #     predictions=predictions,
+            #     references=references,
+            # )
 
         # logger.info(f"epoch {epoch}: eval loss: {eval_loss}")
-        test_metric = metric.compute(average="macro")
+        test_metric = metric.compute(predictions=predictions, references=references, average="macro")
 
         # Print metric
         logger.info("--------------------------------")
