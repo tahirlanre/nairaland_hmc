@@ -719,6 +719,8 @@ def main():
         results[seed] = test_metric
         if test_metric["f1"] > best_test_f1:
             if args.output_dir is not None:
+                os.makedirs(args.output_dir, exist_ok=True)
+
                 with open(os.path.join(args.output_dir, "test_predictions.txt"), "w") as f:
                     for idx, prediciton in enumerate(predictions):
                         f.write(f"{idx}\t{prediciton}\n")
