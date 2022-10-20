@@ -446,6 +446,8 @@ def main():
     args = parse_args()
     args.data_dir = os.path.abspath(args.data_dir)
 
+    print(args.__dict__)
+
     datasets.utils.logging.set_verbosity_error()
     transformers.utils.logging.set_verbosity_error()
 

@@ -228,6 +228,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    print(args.__dict__)
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_glue_no_trainer", args)
