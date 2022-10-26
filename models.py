@@ -245,7 +245,7 @@ class BERT_MTL(nn.Module):
 
         # literal module
         target_output = self.dropout(target_output) 
-        literal_logits = self.classifier(target_output)
+        literal_logits = self.literal_classifier(target_output)
 
         if percent_done:
             self.alpha = percent_done
