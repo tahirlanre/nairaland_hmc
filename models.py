@@ -7,6 +7,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy.spatial import distance
 import numpy as np
 
+from loss import CB_loss
+
 
 class BERT_CON(nn.Module):
     def __init__(
@@ -215,8 +217,10 @@ class BERT_MTL(nn.Module):
 
         self.classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
         self.literal_classifier = nn.Linear(self.enc_model.config.hidden_size, 2)
+        self.fc = nn.Linear(self.enc_model.config.hidden_size, self.enc_model.config.hidden_size)
 
         self.dropout = nn.Dropout(dropout)
+        self.activation = nn.Tanh()
 
     def forward(
         self,
@@ -245,6 +249,8 @@ class BERT_MTL(nn.Module):
 
         # literal module
         target_output = self.dropout(target_output) 
+        target_output = self.activation(self.fc(target_output))
+
         literal_logits = self.literal_classifier(target_output)
 
         if percent_done:
