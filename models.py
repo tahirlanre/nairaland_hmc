@@ -7,8 +7,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy.spatial import distance
 import numpy as np
 
-from loss import CB_loss
-
 
 class BERT_CON(nn.Module):
     def __init__(

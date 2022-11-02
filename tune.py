@@ -282,7 +282,6 @@ def model_init(args, label_list, alpha=0.2, temperature=0.3):
     return model
 
 def train(config, args):
-    epochs = 5
 
     # For seed results
     results = {}
@@ -311,20 +310,20 @@ def train(config, args):
             if args.anneal:
                 model = model_init(args, label_list)
             else:
-                model = model_init(args, alpha=config["alpha"])
+                model = model_init(args, label_list, alpha=config["alpha"])
             model.to(device)
 
         num_update_steps_per_epoch = len(train_dataloader)
-        max_train_steps = epochs * num_update_steps_per_epoch
+        max_train_steps = args.max_num_epochs * num_update_steps_per_epoch
         optimizer, lr_scheduler = build_optimizer(
             model, config["learning_rate"], max_train_steps
         )
 
-        num_train_steps = epochs * len(train_dataloader) 
+        num_train_steps = args.max_num_epochs * len(train_dataloader) 
         global_steps = 0
 
         best_eval_f1 = 0
-        for epoch in range(epochs):
+        for epoch in range(args.max_num_epochs):
             model.train()
             for step, batch in enumerate(train_dataloader):
                 global_steps += 1
@@ -419,7 +418,7 @@ def parse_args():
         help="To apply annealing to alpha",
     )
     parser.add_argument(
-        "--num_cpu", type=int, default=1, help="Number of cpu"
+        "--num_cpu", type=int, default=4, help="Number of cpu"
     )
     parser.add_argument(
         "--num_trials", type=int, default=20, help="Number of trials"
@@ -455,28 +454,28 @@ def main():
     if args.model == "con":
         config = {
             "batch_size": tune.choice([8, 16, 32]),
-            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
-            "alpha": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5]),
+            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5, 4e-5, 5e-5]),
+            "alpha": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
         }
     elif args.model == "scl":
         config = {
             "batch_size": tune.choice([8, 16, 32]),
             "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
-            "alpha": tune.choice([0.1, 0.3, 0.5, 0.7, 0.9, 1.0]),
-            "temperature": tune.choice([0.1, 0.3, 0.5, 0.7]),
+            "alpha": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
+            "temperature": tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]),
         }
     elif args.model == "bert":
         config = {
-            "batch_size": tune.choice([8, 16, 32]),
-            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
+            "batch_size": tune.choice([16, 32]),
+            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5, 4e-5, 5e-5]),
         }
     elif args.model == "mtl":
         config = {
-            "batch_size": tune.choice([8, 16, 32, 64]),
+            "batch_size": tune.choice([16, 32]),
             "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
         }
         if not args.anneal:
-            config["alpha"] = tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
+            config["alpha"] = tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
 
     scheduler = ASHAScheduler(
         metric="eval_f1",
