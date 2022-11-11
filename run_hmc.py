@@ -627,6 +627,7 @@ def main():
         global_steps = 0
         best_model = None
         best_eval_f1 = 0.0
+        best_eval_loss = float("inf")
         for epoch in range(starting_epoch, args.num_train_epochs):
             model.train()
             for step, batch in enumerate(train_dataloader):
@@ -684,9 +685,14 @@ def main():
 
             logger.info(f"epoch {epoch}: eval loss: {eval_loss}, eval F1: {eval_f1}")
 
-            if eval_f1 > best_eval_f1:
+            # if eval_f1 > best_eval_f1:
+            #     logger.info("Saving best model")
+            #     best_eval_f1 = eval_f1
+            #     best_model = copy.deepcopy(model)
+
+            if eval_loss < best_eval_loss:
                 logger.info("Saving best model")
-                best_eval_f1 = eval_f1
+                best_eval_loss = eval_loss
                 best_model = copy.deepcopy(model)
 
         # evaluate best model on test data
