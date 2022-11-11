@@ -662,22 +662,6 @@ def main():
                 )
                 eval_loss += outputs[0].item()
 
-            # If we are in a multiprocess environment, the last batch has duplicates
-            if accelerator.num_processes > 1:
-                if step == len(test_dataloader) - 1:
-                    predictions = predictions[
-                        : len(test_dataloader.dataset) - samples_seen
-                    ]
-                    references = references[
-                        : len(test_dataloader.dataset) - samples_seen
-                    ]
-                else:
-                    samples_seen += references.shape[0]
-            metric.add_batch(
-                predictions=predictions,
-                references=references,
-            )
-
             eval_loss = eval_loss / len(eval_dataloader)
 
             eval_metric = metric.compute(average="macro")
