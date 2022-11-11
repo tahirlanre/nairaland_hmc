@@ -9,9 +9,7 @@ import numpy as np
 
 
 class BERT_CON(nn.Module):
-    def __init__(
-        self, enc_model_name_or_path, num_labels, alpha, dropout=0.2
-    ) -> None:
+    def __init__(self, enc_model_name_or_path, num_labels, alpha, dropout=0.2) -> None:
         super().__init__()
 
         self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)
@@ -23,17 +21,17 @@ class BERT_CON(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def contrastive_loss(self, embeddings, labels, gamma=1.0):
-        c_loss = 0.
+        c_loss = 0.0
         for i in range(len(embeddings)):
             for j in range(len(embeddings)):
-                if (i != j):
+                if i != j:
                     dist = distance.euclidean(embeddings[i], embeddings[j])
                     if labels[i] == labels[j]:
                         c_loss += dist
                     else:
                         c_loss += max(0, (gamma - dist))
-        return c_loss / len(embeddings)              
-                
+        return c_loss / len(embeddings)
+
     def forward(
         self,
         input_ids,
@@ -70,10 +68,11 @@ class BERT_CON(nn.Module):
                 target_output.cpu().detach().numpy(),
                 labels,
             )
-            loss =  cross_loss + (self.alpha * contrastive_l)
+            loss = cross_loss + (self.alpha * contrastive_l)
         output = (logits,)
 
         return ((loss,) + output) if loss is not None else output
+
 
 class BERT_SCL(nn.Module):
     def __init__(
@@ -86,11 +85,11 @@ class BERT_SCL(nn.Module):
 
         self.alpha = alpha
         self.temperature = temperature
-        
+
         self.classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
 
-        self.dropout = nn.Dropout(dropout)            
-                
+        self.dropout = nn.Dropout(dropout)
+
     def contrastive_loss(self, temp, embedding1, embedding2, label):
         """calculate the contrastive loss"""
         # cosine similarity between embeddings
@@ -165,7 +164,7 @@ class BERT_SCL(nn.Module):
         if labels is not None:
             loss_fn = nn.CrossEntropyLoss()
             cross_loss = loss_fn(logits, labels)
-            
+
             contrastive_l = self.contrastive_loss(
                 self.temperature,
                 target_output.cpu().detach().numpy(),
@@ -176,6 +175,7 @@ class BERT_SCL(nn.Module):
         output = (logits,)
 
         return ((loss,) + output) if loss is not None else output
+
 
 class BERT_STL(nn.Module):
     def __init__(self, enc_model_name_or_path, num_labels, dropout=0.2) -> None:
@@ -205,8 +205,11 @@ class BERT_STL(nn.Module):
 
         return ((loss,) + output) if loss is not None else output
 
+
 class BERT_MTL(nn.Module):
-    def __init__(self, enc_model_name_or_path, num_labels, alpha=0.2, dropout=0.2) -> None:
+    def __init__(
+        self, enc_model_name_or_path, num_labels, alpha=0.2, dropout=0.2
+    ) -> None:
         super().__init__()
 
         self.enc_model = AutoModel.from_pretrained(enc_model_name_or_path)
@@ -215,7 +218,9 @@ class BERT_MTL(nn.Module):
 
         self.classifier = nn.Linear(self.enc_model.config.hidden_size, num_labels)
         self.literal_classifier = nn.Linear(self.enc_model.config.hidden_size, 2)
-        self.fc = nn.Linear(self.enc_model.config.hidden_size, self.enc_model.config.hidden_size)
+        self.fc = nn.Linear(
+            self.enc_model.config.hidden_size, self.enc_model.config.hidden_size
+        )
 
         self.dropout = nn.Dropout(dropout)
         self.activation = nn.Tanh()
@@ -229,7 +234,7 @@ class BERT_MTL(nn.Module):
         attention_mask=None,
         token_type_ids=None,
         labels=None,
-        percent_done=0
+        percent_done=0,
     ):
         outputs = self.enc_model(input_ids, attention_mask=attention_mask)
         sequence_output = outputs[0]
@@ -246,14 +251,14 @@ class BERT_MTL(nn.Module):
         logits = self.classifier(pooled_output)
 
         # literal module
-        target_output = self.dropout(target_output) 
+        target_output = self.dropout(target_output)
         target_output = self.activation(self.fc(target_output))
 
         literal_logits = self.literal_classifier(target_output)
 
         if percent_done:
             self.alpha = percent_done
-            
+
         loss = None
         if labels is not None:
             loss_fn = nn.CrossEntropyLoss()
@@ -262,7 +267,7 @@ class BERT_MTL(nn.Module):
             literal_labels = (labels == 2).type(torch.LongTensor)
             literal_loss = loss_fn(literal_logits, literal_labels.cuda())
 
-            loss =  seq_loss + (self.alpha * literal_loss)
+            loss = seq_loss + (self.alpha * literal_loss)
         output = (logits,)
 
         return ((loss,) + output) if loss is not None else output

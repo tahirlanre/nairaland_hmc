@@ -22,6 +22,7 @@ from config import SEEDS
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -78,7 +79,7 @@ def build_dataset(args, tokenizer, batch_size):
             else:
                 labels.append(label)
 
-            tokens_a = tokenizer.tokenize(examples["text"][idx])
+            tokens_a = tokenizer.tokenize(examples["text"][idx]).replace("_", " ")
             tokens_b = None
 
             text_b = int(examples["target_index"][idx])
@@ -92,6 +93,8 @@ def build_dataset(args, tokenizer, batch_size):
             for i, w in enumerate(wordpunct_tokenize(examples["text"][idx])):
                 # If w is a target word, tokenize the word and save to text_b
                 if i == text_b:
+                    # consider disease terms that have more than one word
+                    w = w.replace("_", " ")
                     # consider the index due to models that use a byte-level BPE as a tokenizer (e.g., GPT2, RoBERTa)
                     text_b = (
                         tokenizer.tokenize(w) if i == 0 else tokenizer.tokenize(" " + w)
@@ -177,11 +180,11 @@ def build_dataset(args, tokenizer, batch_size):
 
     if args.model == "bert":
         processed_datasets = raw_datasets.map(
-                    preprocess_function_2,
-                    batched=True,
-                    remove_columns=raw_datasets["train"].column_names,
-                    desc="Running tokenizer on dataset",
-                )
+            preprocess_function_2,
+            batched=True,
+            remove_columns=raw_datasets["train"].column_names,
+            desc="Running tokenizer on dataset",
+        )
     else:
         processed_datasets = raw_datasets.map(
             preprocess_function,
@@ -257,16 +260,16 @@ def model_init(args, label_list, alpha=0.2, temperature=0.3):
         )
     elif args.model == "scl":
         model = BERT_SCL(
-                args.model_name_or_path,
-                len(label_list),
-                alpha=alpha,
-                temperature=temperature,
-            )
+            args.model_name_or_path,
+            len(label_list),
+            alpha=alpha,
+            temperature=temperature,
+        )
     elif args.model == "bert":
         model = BERT_STL(
-                args.model_name_or_path,
-                len(label_list),
-            )
+            args.model_name_or_path,
+            len(label_list),
+        )
     elif args.model == "mtl":
         model = BERT_MTL(
             args.model_name_or_path,
@@ -280,6 +283,7 @@ def model_init(args, label_list, alpha=0.2, temperature=0.3):
     }
 
     return model
+
 
 def train(config, args):
 
@@ -296,12 +300,17 @@ def train(config, args):
         train_dataloader, eval_dataloader, label_list = build_dataset(
             args, tokenizer, config["batch_size"]
         )
-        
+
         if args.model == "con":
             model = model_init(args, label_list, alpha=config["alpha"])
             model.to(device)
         elif args.model == "scl":
-            model = model_init(args, label_list, alpha=config["alpha"], temperature=config["temperature"])
+            model = model_init(
+                args,
+                label_list,
+                alpha=config["alpha"],
+                temperature=config["temperature"],
+            )
             model.to(device)
         elif args.model == "bert":
             model = model_init(args, label_list)
@@ -319,7 +328,7 @@ def train(config, args):
             model, config["learning_rate"], max_train_steps
         )
 
-        num_train_steps = args.max_num_epochs * len(train_dataloader) 
+        num_train_steps = args.max_num_epochs * len(train_dataloader)
         global_steps = 0
 
         best_eval_f1 = 0
@@ -335,7 +344,7 @@ def train(config, args):
                     outputs = model(**batch)
                 loss = outputs[0]
                 loss.backward()
-                
+
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -375,10 +384,9 @@ def train(config, args):
 
     print("Finished Training")
 
+
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Tune model on HMC task"
-    )
+    parser = argparse.ArgumentParser(description="Tune model on HMC task")
     parser.add_argument(
         "--data_dir",
         type=str,
@@ -414,15 +422,11 @@ def parse_args():
     )
     parser.add_argument(
         "--anneal",
-        action='store_true',
+        action="store_true",
         help="To apply annealing to alpha",
     )
-    parser.add_argument(
-        "--num_cpu", type=int, default=4, help="Number of cpu"
-    )
-    parser.add_argument(
-        "--num_trials", type=int, default=20, help="Number of trials"
-    )
+    parser.add_argument("--num_cpu", type=int, default=4, help="Number of cpu")
+    parser.add_argument("--num_trials", type=int, default=20, help="Number of trials")
     parser.add_argument(
         "--num_runs",
         type=int,
@@ -440,6 +444,7 @@ def parse_args():
     args = parser.parse_args()
 
     return args
+
 
 def main():
     args = parse_args()
@@ -475,7 +480,9 @@ def main():
             "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
         }
         if not args.anneal:
-            config["alpha"] = tune.choice([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+            config["alpha"] = tune.choice(
+                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+            )
 
     scheduler = ASHAScheduler(
         metric="eval_f1",

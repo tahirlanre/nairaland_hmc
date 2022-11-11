@@ -147,7 +147,7 @@ def parse_args():
     )
     parser.add_argument(
         "--anneal",
-        action='store_true',
+        action="store_true",
         help="To apply annealing to alpha",
     )
     parser.add_argument(
@@ -236,7 +236,7 @@ def main():
     # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
     # If we're using tracking, we also need to initialize it here and it will by default pick up all supported trackers
     # in the environment
-    accelerator = ( Accelerator())
+    accelerator = Accelerator()
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -256,7 +256,7 @@ def main():
 
     # list of seeds
 
-    best_test_f1 = 0.
+    best_test_f1 = 0.0
     for run in range(args.num_runs):
         # set training seed
         seed = SEEDS[run]
@@ -362,7 +362,7 @@ def main():
             labels = []
 
             for idx in range(len(examples["text"])):
-                tokens_a = tokenizer.tokenize(examples["text"][idx])
+                tokens_a = tokenizer.tokenize(examples["text"][idx]).replace("_", " ")
                 tokens_b = None
 
                 text_b = int(examples["target_index"][idx])
@@ -376,6 +376,8 @@ def main():
                 for i, w in enumerate(wordpunct_tokenize(examples["text"][idx])):
                     # If w is a target word, tokenize the word and save to text_b
                     if i == text_b:
+                        # consider disease terms that have more than one word
+                        w = w.replace("_", " ")
                         # consider the index due to models that use a byte-level BPE as a tokenizer (e.g., GPT2, RoBERTa)
                         text_b = (
                             tokenizer.tokenize(w)
@@ -618,10 +620,10 @@ def main():
             range(args.max_train_steps), disable=not accelerator.is_local_main_process
         )
         completed_steps = 0
-        starting_epoch = 0        
+        starting_epoch = 0
 
-        num_train_steps = args.num_train_epochs * len(train_dataloader) 
-        
+        num_train_steps = args.num_train_epochs * len(train_dataloader)
+
         global_steps = 0
         best_model = None
         best_eval_f1 = 0.0
@@ -722,7 +724,9 @@ def main():
             # )
 
         # logger.info(f"epoch {epoch}: eval loss: {eval_loss}")
-        test_metric = metric.compute(predictions=predictions, references=references, average="macro")
+        test_metric = metric.compute(
+            predictions=predictions, references=references, average="macro"
+        )
 
         # Print metric
         logger.info("--------------------------------")
@@ -732,13 +736,13 @@ def main():
         results[seed] = test_metric
         # if test_metric["f1"] > best_test_f1:
         if args.output_dir is not None:
-            
+
             output_dir = os.path.join(args.output_dir, f"seed_{seed}")
             os.makedirs(output_dir, exist_ok=True)
 
             with open(os.path.join(output_dir, "test_predictions.txt"), "w") as f:
                 for idx, prediciton in enumerate(predictions):
-                    f.write(f"{idx}\t{prediciton}\n")
+                    f.write(f"{idx}\t{prediciton}\t{references[idx]}\n")
 
     # Print fold results
     print(f"RESULTS FOR {args.num_runs} SEEDS")
