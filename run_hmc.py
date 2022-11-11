@@ -362,7 +362,7 @@ def main():
             labels = []
 
             for idx in range(len(examples["text"])):
-                tokens_a = tokenizer.tokenize(examples["text"][idx]).replace("_", " ")
+                tokens_a = tokenizer.tokenize(examples["text"][idx].replace("_", " "))
                 tokens_b = None
 
                 text_b = int(examples["target_index"][idx])
