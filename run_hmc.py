@@ -662,6 +662,11 @@ def main():
                 )
                 eval_loss += outputs[0].item()
 
+            metric.add_batch(
+                 predictions=predictions,
+                 references=references,
+             )
+
             eval_loss = eval_loss / len(eval_dataloader)
 
             eval_metric = metric.compute(average="macro")
