@@ -65,12 +65,14 @@ def parse_args():
     parser.add_argument(
         "--train_file",
         type=str,
+        nargs='+',
         default=None,
         help="A csv or a json file containing the training data.",
     )
     parser.add_argument(
         "--validation_file",
         type=str,
+        nargs='+',
         default=None,
         help="A csv or a json file containing the validation data.",
     )
@@ -205,13 +207,13 @@ def parse_args():
     #     raise ValueError("Need either a task name or a training/validation file.")
     # else:
     if args.train_file is not None:
-        extension = args.train_file.split(".")[-1]
+        extension = args.train_file[0].split(".")[-1]
         assert extension in [
             "csv",
             "json",
         ], "`train_file` should be a csv or a json file."
     if args.validation_file is not None:
-        extension = args.validation_file.split(".")[-1]
+        extension = args.validation_file[0].split(".")[-1]
         assert extension in [
             "csv",
             "json",
@@ -277,7 +279,7 @@ def main():
             data_files["test"] = args.test_file
         extension = (
             args.train_file if args.train_file is not None else args.validation_file
-        ).split(".")[-1]
+        )[0].split(".")[-1]
         raw_datasets = load_dataset(extension, data_files=data_files)
         # See more about loading any type of standard or custom dataset at
         # https://huggingface.co/docs/datasets/loading_datasets.html.

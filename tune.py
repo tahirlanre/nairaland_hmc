@@ -115,7 +115,7 @@ def build_dataset(args, tokenizer, batch_size):
                 for i in range(len(text_b)):
                     segment_ids[tokens_b + i] = 1
             except:
-                print(examples["post_id"][i])
+                print(examples["text"][i])
 
             target_idx_list.append(tokens_b)
 
@@ -476,8 +476,8 @@ def main():
         }
     elif args.model == "mtl":
         config = {
-            "batch_size": tune.choice([16, 32]),
-            "learning_rate": tune.choice([1e-5, 2e-5, 3e-5]),
+            "batch_size": 16,
+            "learning_rate": 1e-5,
         }
         if not args.anneal:
             config["alpha"] = tune.choice(
