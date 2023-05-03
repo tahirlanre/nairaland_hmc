@@ -595,6 +595,8 @@ def main():
 
         # Get the metric function
         metric = evaluate.load("f1")
+        precision_metric = evaluate.load("precision")
+        recall_metric = evaluate.load("recall")
 
         # Train!
         total_batch_size = (
@@ -655,6 +657,7 @@ def main():
             model.eval()
             samples_seen = 0
             eval_loss = 0.0
+            
             for step, batch in enumerate(eval_dataloader):
                 with torch.no_grad():
                     outputs = model(**batch)
@@ -668,18 +671,23 @@ def main():
                  predictions=predictions,
                  references=references,
              )
+            precision_metric.add_batch(
+                 predictions=predictions,
+                 references=references,
+            )
+            recall_metric.add_batch(
+                 predictions=predictions,
+                 references=references,
+            )
 
             eval_loss = eval_loss / len(eval_dataloader)
+            
+            eval_f1 = metric.compute(average="macro")["f1"]
+            eval_precision = metric.compute(average="macro")["precision"]
+            eval_recall = metric.compute(average="macro")["recall"]
 
-            eval_metric = metric.compute(average="macro")
-            eval_f1 = eval_metric["f1"]
 
             logger.info(f"epoch {epoch}: eval loss: {eval_loss}, eval F1: {eval_f1}")
-
-            # if eval_f1 > best_eval_f1:
-            #     logger.info("Saving best model")
-            #     best_eval_f1 = eval_f1
-            #     best_model = copy.deepcopy(model)
 
             if eval_loss < best_eval_loss:
                 logger.info("Saving best model")
@@ -703,22 +711,6 @@ def main():
                 references = np.append(
                     references, batch["labels"].detach().cpu().numpy()
                 )
-            # predictions, references = accelerator.gather((predictions, batch["labels"]))
-            # # If we are in a multiprocess environment, the last batch has duplicates
-            # if accelerator.num_processes > 1:
-            #     if step == len(test_dataloader) - 1:
-            #         predictions = predictions[
-            #             : len(test_dataloader.dataset) - samples_seen
-            #         ]
-            #         references = references[
-            #             : len(test_dataloader.dataset) - samples_seen
-            #         ]
-            #     else:
-            #         samples_seen += references.shape[0]
-            # metric.add_batch(
-            #     predictions=predictions,
-            #     references=references,
-            # )
 
         # logger.info(f"epoch {epoch}: eval loss: {eval_loss}")
         test_metric = metric.compute(
@@ -739,7 +731,7 @@ def main():
 
             with open(os.path.join(output_dir, "test_predictions.txt"), "w") as f:
                 for idx, prediciton in enumerate(predictions):
-                    f.write(f"{idx}\t{prediciton}\t{references[idx]}\n")
+                    f.write(f"{idx}\t{prediciton}\n")
 
     # Print fold results
     print(f"RESULTS FOR {args.num_runs} SEEDS")
