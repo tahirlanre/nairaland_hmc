@@ -13,3 +13,9 @@ The splits for each category are shown beelow:
 | 0  | Health mention  | 923 | 112 | 113 |
 | 1 | Other mention | 3,950 | 491 | 496 |
 | 2  | Non-health mention  | 1,335 | 173 | 168 |
+
+The other datasets used can be downloaded from the respective providers.
+
+1. `PHM2017` - *Did You Really Just Have a Heart Attack? Towards Robust Detection of Personal Health Mentions in Social Media*. For more information, see https://github.com/emory-irlab/PHM2017
+2. `HMC2019` - *Leveraging Sentiment Distributions to Distinguish Figurative From Literal Health Reports on Twitter*. For more information, see https://github.com/biddle-r/HMC2019
+3. `RHMD2022` - *Identification of Disease or Symptom terms in Reddit to Improve Health Mention Classification* - For more information, see https://github.com/usmaann/RHMD-Health-Mention-Dataset
