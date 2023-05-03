@@ -8,7 +8,7 @@ People often use disease or symptom terms on social media and online forums in w
 ## Dataset
 The splits for each category are shown beelow:
 
-| Label  | Label Description | Train | Validation | Test
+| Label  | Label Description | Train | Dev | Test
 | ------------- | ------------- | ------------- | ------------- | ------------- |
 | 0  | Health mention  | 923 | 112 | 113 |
 | 1 | Other mention | 3,950 | 491 | 496 |
